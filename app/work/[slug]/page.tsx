@@ -356,7 +356,7 @@ export default function ProjectPage() {
               className="text-2xl sm:text-3xl font-extralight italic mb-6 leading-relaxed"
               style={{ color: 'var(--text-secondary)' }}
             >
-              "{project.philosophy.quote}"
+              &ldquo;{project.philosophy.quote}&rdquo;
             </p>
             <p className="text-sm" style={{ color: 'var(--accent-gold)' }}>
               — {project.philosophy.author}

@@ -154,66 +154,7 @@ export default function MarkdownWriter() {
     setCharCount(chars);
   }, [article.content]);
 
-  useEffect(() => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-    
-    if (article.title || article.content) {
-      autoSaveTimerRef.current = setTimeout(() => {
-        handleAutoSave();
-      }, 5000);
-    }
-    
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
-    };
-  }, [article]);
-
-  useEffect(() => {
-    if (typewriterMode && editorRef.current) {
-      const editor = editorRef.current;
-      const lineHeight = 32;
-      const viewportMiddle = editor.clientHeight / 2;
-      const targetScroll = (currentLine * lineHeight) - viewportMiddle;
-      
-      editor.scrollTo({
-        top: Math.max(0, targetScroll),
-        behavior: "smooth"
-      });
-    }
-  }, [currentLine, typewriterMode]);
-
-  const loadArticle = async (id: string) => {
-    try {
-      const res = await fetch(`/api/articles/${id}`);
-      if (res.ok) {
-        const data = await res.json();
-        let markdownContent = "";
-        if (typeof data.content === "string") {
-          markdownContent = data.content;
-        } else if (Array.isArray(data.content)) {
-          markdownContent = data.content.map((block: { type: string; text: string }) => {
-            if (block.type === "heading") return `## ${block.text}`;
-            if (block.type === "quote") return `> ${block.text}`;
-            return block.text;
-          }).join("\n\n");
-        }
-        setArticle({ ...data, content: markdownContent });
-      }
-    } catch (error) {
-      console.error("Failed to load article:", error);
-    }
-  };
-
-  const handleAutoSave = useCallback(async () => {
-    if (!article.title.trim()) return;
-    await saveArticle(false);
-  }, [article]);
-
-  const saveArticle = async (redirect: boolean = true) => {
+  const saveArticle = useCallback(async (redirect: boolean = true) => {
     setSaving(true);
     
     // Save content as raw markdown string (not ContentBlocks)
@@ -258,10 +199,69 @@ export default function MarkdownWriter() {
           setTimeout(() => router.push("/admin/articles"), 500);
         }
       }
-    } catch (error) {
-      console.error("Failed to save:", error);
+    } catch {
+      alert("Failed to save article");
     } finally {
       setSaving(false);
+    }
+  }, [article, router]);
+
+  const handleAutoSave = useCallback(async () => {
+    if (!article.title.trim()) return;
+    await saveArticle(false);
+  }, [article.title, saveArticle]);
+
+  useEffect(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    
+    if (article.title || article.content) {
+      autoSaveTimerRef.current = setTimeout(() => {
+        handleAutoSave();
+      }, 5000);
+    }
+    
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [article, handleAutoSave]);
+
+  useEffect(() => {
+    if (typewriterMode && editorRef.current) {
+      const editor = editorRef.current;
+      const lineHeight = 32;
+      const viewportMiddle = editor.clientHeight / 2;
+      const targetScroll = (currentLine * lineHeight) - viewportMiddle;
+      
+      editor.scrollTo({
+        top: Math.max(0, targetScroll),
+        behavior: "smooth"
+      });
+    }
+  }, [currentLine, typewriterMode]);
+
+  const loadArticle = async (id: string) => {
+    try {
+      const res = await fetch(`/api/articles/${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        let markdownContent = "";
+        if (typeof data.content === "string") {
+          markdownContent = data.content;
+        } else if (Array.isArray(data.content)) {
+          markdownContent = data.content.map((block: { type: string; text: string }) => {
+            if (block.type === "heading") return `## ${block.text}`;
+            if (block.type === "quote") return `> ${block.text}`;
+            return block.text;
+          }).join("\n\n");
+        }
+        setArticle({ ...data, content: markdownContent });
+      }
+    } catch (error) {
+      console.error("Failed to load article:", error);
     }
   };
 

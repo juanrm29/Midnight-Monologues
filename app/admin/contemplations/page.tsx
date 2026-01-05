@@ -305,10 +305,10 @@ export default function ContemplationsAdmin() {
             </h3>
             <div className="p-8 rounded-lg text-center" style={{ backgroundColor: "rgba(255,255,255,0.02)" }}>
               <p className="text-xs uppercase tracking-widest mb-4" style={{ color: "#c9a227" }}>
-                Today's Contemplation
+                Today&apos;s Contemplation
               </p>
               <p className="text-2xl font-light italic" style={{ color: "rgba(255,255,255,0.9)" }}>
-                "{contemplations.find(c => c.featured)?.question}"
+                &ldquo;{contemplations.find(c => c.featured)?.question}&rdquo;
               </p>
             </div>
           </div>

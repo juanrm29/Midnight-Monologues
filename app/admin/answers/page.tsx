@@ -242,7 +242,7 @@ export default function AnswersModeration() {
                   {/* Answer */}
                   <p className="text-sm leading-relaxed mb-3 italic line-clamp-4"
                     style={{ color: "rgba(0,0,0,0.75)", fontFamily: "'Georgia', serif" }}>
-                    "{answer.answer}"
+                    &ldquo;{answer.answer}&rdquo;
                   </p>
 
                   {/* Footer */}
@@ -325,7 +325,7 @@ export default function AnswersModeration() {
                 {/* Answer */}
                 <p className="text-xl leading-relaxed mb-6 italic"
                   style={{ color: "rgba(0,0,0,0.85)", fontFamily: "'Georgia', serif" }}>
-                  "{selectedAnswer.answer}"
+                  &ldquo;{selectedAnswer.answer}&rdquo;
                 </p>
 
                 {/* Meta */}

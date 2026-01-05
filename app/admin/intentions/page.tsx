@@ -233,7 +233,7 @@ export default function IntentionsAdmin() {
                         }}
                         onClick={() => startEdit(intention)}
                       >
-                        "{intention.text}"
+                        &ldquo;{intention.text}&rdquo;
                       </p>
                     )}
                   </div>
@@ -264,11 +264,11 @@ export default function IntentionsAdmin() {
         {intentions.length > 0 && (
           <div className="mt-12 pt-8 border-t" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
             <h3 className="text-xs font-mono uppercase tracking-wider mb-4" style={{ color: "rgba(255,255,255,0.4)" }}>
-              Today's Intention Preview
+              Today&apos;s Intention Preview
             </h3>
             <div className="p-6 rounded-lg" style={{ backgroundColor: "rgba(255,255,255,0.02)" }}>
               <p className="text-lg font-light italic" style={{ color: "rgba(255,255,255,0.8)" }}>
-                "{intentions[new Date().getDate() % intentions.length]?.text}"
+                &ldquo;{intentions[new Date().getDate() % intentions.length]?.text}&rdquo;
               </p>
             </div>
           </div>

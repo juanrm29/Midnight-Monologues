@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { login } from "@/lib/auth";
 
 // ═══════════════════════════════════════════════════════════════════
@@ -200,13 +201,13 @@ export default function AdminLogin() {
           transition={{ delay: 0.7 }}
           className="mt-8 text-center"
         >
-          <a 
+          <Link 
             href="/"
             className="text-sm transition-opacity hover:opacity-70"
             style={{ color: "var(--text-muted)" }}
           >
             ← Return to site
-          </a>
+          </Link>
         </motion.div>
       </motion.div>
     </div>

@@ -1102,7 +1102,7 @@ function NowView() {
                 style={{ backgroundColor: 'var(--accent-gold)' }}
               />
               <span className="text-[10px] tracking-[0.3em] uppercase" style={{ color: 'var(--accent-gold)', opacity: 0.7 }}>
-                today's question
+                today&apos;s question
               </span>
             </motion.div>
 
@@ -1207,7 +1207,7 @@ function NowView() {
                 }}
               >
                 <p className="text-sm italic leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
-                  "{todayIntention}"
+                  &ldquo;{todayIntention}&rdquo;
                 </p>
               </div>
               {/* Connection line */}
@@ -2777,14 +2777,14 @@ function AboutView() {
           
           <div className="space-y-6 text-base leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
             <p>
-              I practice <span style={{ color: 'var(--accent-gold)' }}>Stoicism</span> — not as an academic exercise, 
+              I practice <span style={{ color: 'var(--accent-gold)' }}>Stoicism</span> &mdash; not as an academic exercise, 
               but as a living philosophy. The Stoics taught that virtue is the only true good, that we should focus 
-              on what's within our control, and that obstacles can become opportunities.
+              on what&apos;s within our control, and that obstacles can become opportunities.
             </p>
             
             <p>
-              <span className="italic">"The impediment to action advances action. What stands in the way becomes the way."</span> 
-              <br />— Marcus Aurelius
+              <span className="italic">&ldquo;The impediment to action advances action. What stands in the way becomes the way.&rdquo;</span> 
+              <br />&mdash; Marcus Aurelius
             </p>
             
             <p>
@@ -3297,7 +3297,7 @@ function CollectiveView() {
           className="max-w-4xl mx-auto mb-20 text-center"
         >
           <p className="text-xs uppercase tracking-[0.3em] mb-6" style={{ color: 'var(--accent-gold)' }}>
-            Today's Contemplation
+            Today&apos;s Contemplation
           </p>
           <h2 
             className="text-3xl sm:text-4xl md:text-5xl font-extralight leading-tight mb-8 italic"
@@ -3306,7 +3306,7 @@ function CollectiveView() {
               fontFamily: "'Georgia', serif",
             }}
           >
-            "{featuredContemplation.question}"
+            &ldquo;{featuredContemplation.question}&rdquo;
           </h2>
           <motion.button
             onClick={() => {
@@ -3408,7 +3408,7 @@ function CollectiveView() {
                 }}
               >
                 <p className="text-sm font-light italic" style={{ color: 'var(--text-secondary)' }}>
-                  "{c.question}"
+                  &ldquo;{c.question}&rdquo;
                 </p>
                 {c.featured && (
                   <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(201,162,39,0.2)', color: 'var(--accent-gold)' }}>
@@ -3486,7 +3486,7 @@ function CollectiveView() {
                     fontFamily: "'Georgia', serif",
                   }}
                 >
-                  "{note.answer}"
+                  &ldquo;{note.answer}&rdquo;
                 </p>
 
                 {/* Footer */}
@@ -3577,7 +3577,7 @@ function CollectiveView() {
                     fontFamily: "'Georgia', serif",
                   }}
                 >
-                  "{selectedNote.answer}"
+                  &ldquo;{selectedNote.answer}&rdquo;
                 </p>
 
                 {/* Footer */}
@@ -3654,7 +3654,7 @@ function CollectiveView() {
 
               {selectedQuestion && (
                 <p className="text-lg font-light italic mb-6" style={{ color: 'var(--text-secondary)' }}>
-                  "{selectedQuestion.question}"
+                  &ldquo;{selectedQuestion.question}&rdquo;
                 </p>
               )}
 
