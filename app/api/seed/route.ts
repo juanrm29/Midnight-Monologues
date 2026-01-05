@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
 // ═══════════════════════════════════════════════════════════════════
@@ -6,36 +6,69 @@ import prisma from "@/lib/prisma";
 // "Well begun is half done." - Aristotle
 // ═══════════════════════════════════════════════════════════════════
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    // Clear existing data
-    await prisma.stickyNote.deleteMany();
-    await prisma.quote.deleteMany();
-    await prisma.project.deleteMany();
-    await prisma.article.deleteMany();
-    await prisma.profile.deleteMany();
+    // Check if force reset is requested via query param ?reset=true
+    const { searchParams } = new URL(request.url);
+    const forceReset = searchParams.get("reset") === "true";
 
-    // Seed Profile
-    await prisma.profile.create({
-      data: {
-        name: "Juan Rizky Maulana",
-        title: "Developer & Stoic Practitioner",
-        bio: "Building thoughtful software guided by ancient wisdom. Exploring the intersection of technology and philosophy.",
-        location: "Indonesia",
-        email: "hello@juanrizky.dev",
-        social: JSON.stringify({
-          github: "https://github.com/juanrizky",
-          twitter: "https://twitter.com/juanrizky",
-          linkedin: "https://linkedin.com/in/juanrizky",
-        }),
+    // Check existing data counts
+    const existingCounts = {
+      articles: await prisma.article.count(),
+      projects: await prisma.project.count(),
+      quotes: await prisma.quote.count(),
+      notes: await prisma.stickyNote.count(),
+      intentions: await prisma.dailyIntention.count(),
+      profile: await prisma.profile.count(),
+    };
+
+    const results = {
+      profile: 0,
+      articles: 0,
+      projects: 0,
+      quotes: 0,
+      stickyNotes: 0,
+      intentions: 0,
+      skipped: [] as string[],
+    };
+
+    // Only clear if force reset is requested
+    if (forceReset) {
+      await prisma.stickyNote.deleteMany();
+      await prisma.quote.deleteMany();
+      await prisma.project.deleteMany();
+      await prisma.article.deleteMany();
+      await prisma.profile.deleteMany();
+      await prisma.dailyIntention.deleteMany();
+    }
+
+    // Seed Profile (only if empty or reset)
+    if (existingCounts.profile === 0 || forceReset) {
+      await prisma.profile.create({
+        data: {
+          name: "Juan Rizky Maulana",
+          title: "Developer & Stoic Practitioner",
+          bio: "Building thoughtful software guided by ancient wisdom. Exploring the intersection of technology and philosophy.",
+          location: "Indonesia",
+          email: "hello@juanrizky.dev",
+          social: JSON.stringify({
+            github: "https://github.com/juanrizky",
+            twitter: "https://twitter.com/juanrizky",
+            linkedin: "https://linkedin.com/in/juanrizky",
+          }),
       },
     });
+    results.profile = 1;
+    } else {
+      results.skipped.push("profile");
+    }
 
-    // Seed Articles
-    await prisma.article.createMany({
-      data: [
-        {
-          slug: "dichotomy-of-control",
+    // Seed Articles (only if empty or reset)
+    if (existingCounts.articles === 0 || forceReset) {
+      await prisma.article.createMany({
+        data: [
+          {
+            slug: "dichotomy-of-control",
           title: "The Dichotomy of Control",
           excerpt: "On distinguishing what is within our power and what is not—and why this matters for peace of mind.",
           date: "2025-12-15",
@@ -119,9 +152,14 @@ export async function POST() {
         },
       ],
     });
+      results.articles = 6;
+    } else {
+      results.skipped.push("articles");
+    }
 
-    // Seed Projects
-    await prisma.project.createMany({
+    // Seed Projects (only if empty or reset)
+    if (existingCounts.projects === 0 || forceReset) {
+      await prisma.project.createMany({
       data: [
         {
           slug: "stoic-daily",
@@ -235,9 +273,14 @@ export async function POST() {
         },
       ],
     });
+      results.projects = 4;
+    } else {
+      results.skipped.push("projects");
+    }
 
-    // Seed Quotes
-    await prisma.quote.createMany({
+    // Seed Quotes (only if empty or reset)
+    if (existingCounts.quotes === 0 || forceReset) {
+      await prisma.quote.createMany({
       data: [
         { text: "You have power over your mind - not outside events.", author: "Marcus Aurelius", source: "Meditations VI.32", category: "control" },
         { text: "The impediment to action advances action. What stands in the way becomes the way.", author: "Marcus Aurelius", source: "Meditations V.20", category: "obstacles" },
@@ -247,9 +290,14 @@ export async function POST() {
         { text: "It is not things that disturb us, but our judgments about things.", author: "Epictetus", source: "Enchiridion 5", category: "perception" },
       ],
     });
+      results.quotes = 6;
+    } else {
+      results.skipped.push("quotes");
+    }
 
-    // Seed Sticky Notes
-    await prisma.stickyNote.createMany({
+    // Seed Sticky Notes (only if empty or reset)
+    if (existingCounts.notes === 0 || forceReset) {
+      await prisma.stickyNote.createMany({
       data: [
         {
           question: "How do you deal with setbacks?",
@@ -271,17 +319,46 @@ export async function POST() {
         },
       ],
     });
+      results.stickyNotes = 2;
+    } else {
+      results.skipped.push("stickyNotes");
+    }
+
+    // Seed Daily Intentions (only if empty or reset)
+    if (existingCounts.intentions === 0 || forceReset) {
+      await prisma.dailyIntention.createMany({
+      data: [
+        { text: "Today I practice the dichotomy of control.", order: 0, active: true },
+        { text: "Memento mori — remember you must die.", order: 1, active: true },
+        { text: "Amor fati — love whatever happens.", order: 2, active: true },
+        { text: "Focus on what depends on me alone.", order: 3, active: true },
+        { text: "The obstacle is the way forward.", order: 4, active: true },
+        { text: "Less but better. Depth over breadth.", order: 5, active: true },
+        { text: "Present over perfect.", order: 6, active: true },
+        { text: "Virtue is the only good.", order: 7, active: true },
+        { text: "This too shall pass.", order: 8, active: true },
+        { text: "Be the calm in the storm.", order: 9, active: true },
+        { text: "Judge not the day by the harvest, but by the seeds planted.", order: 10, active: true },
+        { text: "Progress, not perfection.", order: 11, active: true },
+        { text: "What would the best version of myself do?", order: 12, active: true },
+      ],
+    });
+      results.intentions = 13;
+    } else {
+      results.skipped.push("intentions");
+    }
 
     return NextResponse.json({
       success: true,
-      message: "Database seeded successfully!",
-      counts: {
-        profile: 1,
-        articles: 6,
-        projects: 4,
-        quotes: 6,
-        stickyNotes: 2,
-      },
+      message: forceReset 
+        ? "Database reset and seeded successfully!" 
+        : results.skipped.length > 0 
+          ? "Database seeded (some tables skipped - already have data)"
+          : "Database seeded successfully!",
+      seeded: results,
+      note: forceReset 
+        ? "All data was cleared and re-seeded" 
+        : "Only empty tables were seeded. Use ?reset=true to force re-seed all.",
     });
   } catch (error) {
     console.error("Seed error:", error);

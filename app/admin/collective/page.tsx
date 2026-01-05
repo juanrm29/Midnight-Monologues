@@ -36,11 +36,16 @@ const EMPTY_NOTE: StickyNote = {
 
 const COLORS: StickyNote["color"][] = ["gold", "sage", "marble", "bronze"];
 
-const COLOR_STYLES: Record<StickyNote["color"], { bg: string; text: string }> = {
+const COLOR_STYLES: Record<string, { bg: string; text: string }> = {
   gold: { bg: "rgba(201, 162, 39, 0.15)", text: "var(--accent-gold)" },
   sage: { bg: "rgba(107, 142, 35, 0.15)", text: "#6b8e23" },
   marble: { bg: "rgba(200, 200, 200, 0.15)", text: "var(--text-secondary)" },
   bronze: { bg: "rgba(205, 127, 50, 0.15)", text: "#cd7f32" }
+};
+
+// Helper to get color style with fallback
+const getColorStyle = (color: string) => {
+  return COLOR_STYLES[color] || COLOR_STYLES.gold;
 };
 
 export default function CollectiveManager() {
@@ -466,13 +471,13 @@ export default function CollectiveManager() {
                   transition={{ delay: index * 0.05 }}
                   className="p-5 rounded-xl transition-all duration-200 hover:scale-[1.02]"
                   style={{ 
-                    backgroundColor: COLOR_STYLES[note.color].bg,
-                    border: `1px solid ${COLOR_STYLES[note.color].text}`
+                    backgroundColor: getColorStyle(note.color).bg,
+                    border: `1px solid ${getColorStyle(note.color).text}`
                   }}
                 >
                   <p 
                     className="text-xs font-medium mb-2"
-                    style={{ color: COLOR_STYLES[note.color].text }}
+                    style={{ color: getColorStyle(note.color).text }}
                   >
                     {note.question}
                   </p>
@@ -500,7 +505,7 @@ export default function CollectiveManager() {
                   {/* Actions */}
                   <div 
                     className="mt-4 pt-4 flex gap-2"
-                    style={{ borderTop: `1px solid ${COLOR_STYLES[note.color].text}40` }}
+                    style={{ borderTop: `1px solid ${getColorStyle(note.color).text}40` }}
                   >
                     <button
                       onClick={() => {
@@ -537,7 +542,7 @@ export default function CollectiveManager() {
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
                         className="mt-4 pt-4 flex items-center justify-between"
-                        style={{ borderTop: `1px solid ${COLOR_STYLES[note.color].text}40` }}
+                        style={{ borderTop: `1px solid ${getColorStyle(note.color).text}40` }}
                       >
                         <p className="text-xs" style={{ color: "#ef4444" }}>
                           Delete?

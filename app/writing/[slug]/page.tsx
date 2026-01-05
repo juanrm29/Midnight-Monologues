@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { markdownToHtml, markdownStyles, isMarkdownContent } from "@/lib/markdown";
 
 // ═══════════════════════════════════════════════════════════════════
 // TYPES
@@ -28,7 +29,7 @@ interface Article {
     author: string;
     source: string;
   };
-  content: ContentBlock[];
+  content: ContentBlock[] | string;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -126,11 +127,11 @@ export default function ArticlePage() {
             Article Not Found
           </h1>
           <Link 
-            href="/"
+            href="/?view=writing"
             className="text-sm underline transition-opacity hover:opacity-70"
             style={{ color: 'var(--text-muted)' }}
           >
-            Return to the agora
+            Return to Writing
           </Link>
         </div>
       </div>
@@ -139,19 +140,51 @@ export default function ArticlePage() {
 
   return (
     <>
-      {/* Focus Mode Overlay */}
+      {/* Focus Mode Vignette - dims edges, keeps center clear */}
       <AnimatePresence>
         {focusMode && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 pointer-events-none"
-            style={{ 
-              background: 'radial-gradient(ellipse 50% 50% at 50% 50%, transparent 0%, var(--bg-primary) 100%)',
-              backdropFilter: 'blur(8px)',
-            }}
-          />
+          <>
+            {/* Top vignette */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed top-0 left-0 right-0 h-32 z-40 pointer-events-none"
+              style={{ 
+                background: 'linear-gradient(to bottom, var(--bg-primary) 0%, transparent 100%)',
+              }}
+            />
+            {/* Bottom vignette */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed bottom-0 left-0 right-0 h-32 z-40 pointer-events-none"
+              style={{ 
+                background: 'linear-gradient(to top, var(--bg-primary) 0%, transparent 100%)',
+              }}
+            />
+            {/* Left vignette */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed top-0 left-0 bottom-0 w-1/4 z-40 pointer-events-none"
+              style={{ 
+                background: 'linear-gradient(to right, var(--bg-primary) 0%, transparent 100%)',
+              }}
+            />
+            {/* Right vignette */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed top-0 right-0 bottom-0 w-1/4 z-40 pointer-events-none"
+              style={{ 
+                background: 'linear-gradient(to left, var(--bg-primary) 0%, transparent 100%)',
+              }}
+            />
+          </>
         )}
       </AnimatePresence>
 
@@ -176,12 +209,12 @@ export default function ArticlePage() {
           className="fixed top-6 left-6 z-50"
         >
           <Link 
-            href="/"
+            href="/?view=writing"
             className="flex items-center gap-2 text-sm transition-opacity hover:opacity-70"
             style={{ color: 'var(--text-muted)' }}
           >
             <span>←</span>
-            <span>Back</span>
+            <span>Back to Writing</span>
           </Link>
         </motion.div>
 
@@ -272,53 +305,66 @@ export default function ArticlePage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
-            className="prose-stoic"
           >
-            {article.content.map((block: ContentBlock, index: number) => {
-              if (block.type === 'heading') {
-                return (
-                  <h2 
-                    key={index}
-                    className="text-xl font-light mt-12 mb-6"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
-                    {block.text}
-                  </h2>
-                );
-              }
-              
-              if (block.type === 'quote') {
-                return (
-                  <blockquote 
-                    key={index}
-                    className="my-8 pl-6"
-                    style={{ borderLeft: '2px solid var(--border-secondary)' }}
-                  >
+            {/* Inject markdown styles */}
+            <style dangerouslySetInnerHTML={{ __html: markdownStyles }} />
+            
+            {isMarkdownContent(article.content) ? (
+              // Markdown content - render with shared styles
+              <div 
+                className="prose-markdown"
+                dangerouslySetInnerHTML={{ __html: markdownToHtml(article.content) }} 
+              />
+            ) : (
+              // Legacy ContentBlock format
+              <div className="prose-stoic">
+                {article.content.map((block: ContentBlock, index: number) => {
+                  if (block.type === 'heading') {
+                    return (
+                      <h2 
+                        key={index}
+                        className="text-xl font-light mt-12 mb-6"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {block.text}
+                      </h2>
+                    );
+                  }
+                  
+                  if (block.type === 'quote') {
+                    return (
+                      <blockquote 
+                        key={index}
+                        className="my-8 pl-6"
+                        style={{ borderLeft: '2px solid var(--border-secondary)' }}
+                      >
+                        <p 
+                          className="text-lg italic mb-2"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          &ldquo;{block.text}&rdquo;
+                        </p>
+                        {block.author && (
+                          <footer style={{ color: 'var(--text-muted)' }}>
+                            — {block.author}
+                          </footer>
+                        )}
+                      </blockquote>
+                    );
+                  }
+                  
+                  return (
                     <p 
-                      className="text-lg italic mb-2"
-                      style={{ color: 'var(--text-secondary)' }}
+                      key={index}
+                      className="text-base leading-relaxed mb-6"
+                      style={{ color: 'var(--text-tertiary)' }}
                     >
-                      &ldquo;{block.text}&rdquo;
+                      {block.text}
                     </p>
-                    {block.author && (
-                      <footer style={{ color: 'var(--text-muted)' }}>
-                        — {block.author}
-                      </footer>
-                    )}
-                  </blockquote>
-                );
-              }
-              
-              return (
-                <p 
-                  key={index}
-                  className="text-base leading-relaxed mb-6"
-                  style={{ color: 'var(--text-tertiary)' }}
-                >
-                  {block.text}
-                </p>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </motion.div>
 
           {/* Footer */}

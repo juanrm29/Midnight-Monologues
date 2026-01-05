@@ -160,7 +160,7 @@ export default function ProjectPage() {
             Project Not Found
           </h1>
           <Link 
-            href="/"
+            href="/?view=work"
             className="text-sm underline transition-opacity hover:opacity-70"
             style={{ color: 'var(--text-muted)' }}
           >
@@ -197,12 +197,12 @@ export default function ProjectPage() {
       >
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <Link 
-            href="/"
+            href="/?view=work"
             className="flex items-center gap-2 text-sm transition-opacity hover:opacity-70"
             style={{ color: 'var(--text-muted)' }}
           >
             <span>←</span>
-            <span>Back</span>
+            <span>Back to Work</span>
           </Link>
 
           <div className="flex items-center gap-4">

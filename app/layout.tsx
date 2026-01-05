@@ -17,14 +17,30 @@ export const metadata: Metadata = {
   description: "Integrated Destiny Environment - Where code meets stories",
 };
 
+// Inline script to prevent theme flash on page load
+const themeInitScript = `
+  (function() {
+    try {
+      var theme = localStorage.getItem('theme') || 'dark';
+      document.documentElement.classList.remove('light', 'dark');
+      document.documentElement.classList.add(theme === 'light' ? 'light' : 'dark');
+    } catch (e) {
+      document.documentElement.classList.add('dark');
+    }
+  })();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${jetbrainsMono.variable} ${inter.variable} dark`}>
-      <body className="bg-[#0d0d0d] text-gray-100 font-mono antialiased">{children}</body>
+    <html lang="en" className={`${jetbrainsMono.variable} ${inter.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="bg-[var(--bg-primary)] text-[var(--text-primary)] font-mono antialiased">{children}</body>
     </html>
   );
 }

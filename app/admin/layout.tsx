@@ -41,6 +41,10 @@ export default function AdminLayout({
       return;
     }
 
+    // Force light theme for CMS
+    document.documentElement.classList.remove('dark');
+    document.documentElement.classList.add('light');
+
     const authed = isAuthenticated();
     if (!authed) {
       router.push("/admin/login");
@@ -48,6 +52,13 @@ export default function AdminLayout({
       setIsAuthed(true);
     }
     setLoading(false);
+    
+    // Restore theme when leaving admin
+    return () => {
+      const savedTheme = localStorage.getItem('theme') || 'dark';
+      document.documentElement.classList.remove('light', 'dark');
+      document.documentElement.classList.add(savedTheme === 'light' ? 'light' : 'dark');
+    };
   }, [pathname, router, isLoginPage]);
 
   const handleLogout = () => {
@@ -76,6 +87,12 @@ export default function AdminLayout({
 
   // Login page gets its own layout
   if (isLoginPage) {
+    return <>{children}</>;
+  }
+
+  // Write/Edit pages get their own minimal layout (no sidebar)
+  const isWritePage = pathname.includes("/articles/write") || pathname.includes("/articles/edit");
+  if (isWritePage) {
     return <>{children}</>;
   }
 

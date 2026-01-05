@@ -115,9 +115,10 @@ function useLifeProgress() {
   return data;
 }
 
-// Countdown to tomorrow
-function useCountdownToTomorrow() {
+// Countdown to tomorrow with midnight callback
+function useCountdownToTomorrow(onMidnight?: () => void) {
   const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
+  const midnightCalledRef = useRef(false);
   
   useEffect(() => {
     const calculate = () => {
@@ -125,17 +126,27 @@ function useCountdownToTomorrow() {
       const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
       const diff = tomorrow.getTime() - now.getTime();
       
-      setTimeLeft({
-        hours: Math.floor(diff / (1000 * 60 * 60)),
-        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
-        seconds: Math.floor((diff % (1000 * 60)) / 1000),
-      });
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      
+      setTimeLeft({ hours, minutes, seconds });
+      
+      // Trigger midnight callback when countdown reaches 0
+      if (hours === 0 && minutes === 0 && seconds === 0 && !midnightCalledRef.current) {
+        midnightCalledRef.current = true;
+        onMidnight?.();
+        // Reset after 2 seconds so it can trigger again next midnight
+        setTimeout(() => {
+          midnightCalledRef.current = false;
+        }, 2000);
+      }
     };
     
     calculate();
     const interval = setInterval(calculate, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [onMidnight]);
   
   return timeLeft;
 }
@@ -265,25 +276,55 @@ const DUMMY_VOTES: Record<number, number> = {
   11: 25, 12: 41, 13: 19, 14: 55, 15: 67, 16: 82, 17: 31, 18: 44, 19: 110, 20: 58,
 };
 
-// Hook for questions system
-function useQuestions() {
-  const [votes, setVotes] = useState<Record<number, number>>(DUMMY_VOTES);
+// Hook for questions system with CMS support
+function useQuestions(cmsQuestions?: Array<{ id: number; text: string }>) {
+  const [votes, setVotes] = useState<Record<number, number>>({});
   const [userVotes, setUserVotes] = useState<number[]>([]);
   const [todayQuestionIndex, setTodayQuestionIndex] = useState(0);
+  const [isInitialized, setIsInitialized] = useState(false);
 
+  // Use CMS questions if provided, otherwise fallback
+  const questions = cmsQuestions && cmsQuestions.length > 0 ? cmsQuestions : EXISTENTIAL_QUESTIONS;
+  const questionsKey = questions.map(q => q.id).join(',');
+
+  // Initialize votes once when questions are available
   useEffect(() => {
-    const savedVotes = localStorage.getItem("question-votes");
-    const savedUserVotes = localStorage.getItem("user-votes");
+    if (isInitialized && questions.length > 0) return;
     
-    if (savedVotes) setVotes({ ...DUMMY_VOTES, ...JSON.parse(savedVotes) });
+    const savedVotes = localStorage.getItem("contemplation-votes");
+    const savedUserVotes = localStorage.getItem("contemplation-user-votes");
+    
+    // Initialize votes: use saved votes or generate random for new questions
+    if (savedVotes) {
+      const parsed = JSON.parse(savedVotes);
+      // Merge saved votes with new questions that don't have votes yet
+      const mergedVotes: Record<number, number> = { ...parsed };
+      questions.forEach(q => {
+        if (!(q.id in mergedVotes)) {
+          mergedVotes[q.id] = Math.floor(Math.random() * 150) + 20;
+        }
+      });
+      setVotes(mergedVotes);
+      localStorage.setItem("contemplation-votes", JSON.stringify(mergedVotes));
+    } else {
+      // Generate initial random votes for all questions
+      const initialVotes: Record<number, number> = {};
+      questions.forEach(q => {
+        initialVotes[q.id] = Math.floor(Math.random() * 150) + 20;
+      });
+      setVotes(initialVotes);
+      localStorage.setItem("contemplation-votes", JSON.stringify(initialVotes));
+    }
+    
     if (savedUserVotes) setUserVotes(JSON.parse(savedUserVotes));
     
     const today = new Date();
     const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
-    setTodayQuestionIndex(dayOfYear % EXISTENTIAL_QUESTIONS.length);
-  }, []);
+    setTodayQuestionIndex(dayOfYear % questions.length);
+    setIsInitialized(true);
+  }, [questionsKey, isInitialized, questions]);
 
-  const todayQuestion = EXISTENTIAL_QUESTIONS[todayQuestionIndex];
+  const todayQuestion = questions[todayQuestionIndex] || questions[0];
 
   const vote = (questionId: number) => {
     if (userVotes.includes(questionId)) return;
@@ -294,17 +335,17 @@ function useQuestions() {
     setVotes(newVotes);
     setUserVotes(newUserVotes);
     
-    localStorage.setItem("question-votes", JSON.stringify(newVotes));
-    localStorage.setItem("user-votes", JSON.stringify(newUserVotes));
+    localStorage.setItem("contemplation-votes", JSON.stringify(newVotes));
+    localStorage.setItem("contemplation-user-votes", JSON.stringify(newUserVotes));
   };
 
-  const sortedQuestions = [...EXISTENTIAL_QUESTIONS].sort(
+  const sortedQuestions = [...questions].sort(
     (a, b) => (votes[b.id] || 0) - (votes[a.id] || 0)
   );
 
   return {
     todayQuestion,
-    allQuestions: EXISTENTIAL_QUESTIONS,
+    allQuestions: questions,
     sortedQuestions,
     votes,
     userVotes,
@@ -704,28 +745,150 @@ function ZenModeOverlay({ question, countdown, onClose }: ZenModeProps) {
 function NowView() {
   const { greeting } = useTimeAwareness();
   const { year, week, mounted } = useLifeProgress();
-  const countdown = useCountdownToTomorrow();
   const { emoji: lunarEmoji, name: lunarName } = useLunarPhase();
   const { x: mouseX, y: mouseY } = useMouseParallax();
-  
-  const { 
-    todayQuestion, 
-    sortedQuestions,
-    votes, 
-    userVotes, 
-    vote, 
-  } = useQuestions();
 
   const [todayIntention, setTodayIntention] = useState(DAILY_INTENTIONS[0]);
   const [hoursLeft, setHoursLeft] = useState(0);
   const [isAnswerModalOpen, setIsAnswerModalOpen] = useState(false);
   const [isContemplatedModalOpen, setIsContemplatedModalOpen] = useState(false);
-  const [selectedQuestion, setSelectedQuestion] = useState(todayQuestion);
   const [isZenMode, setIsZenMode] = useState(false);
+  const [questionRotationKey, setQuestionRotationKey] = useState(0);
+  const [showMidnightTransition, setShowMidnightTransition] = useState(false);
+  
+  // CMS Contemplations state - converted to question format
+  const [cmsQuestions, setCmsQuestions] = useState<Array<{ id: number; text: string }>>([]);
+  const [featuredQuestionId, setFeaturedQuestionId] = useState<number | null>(null);
+  
+  // Midnight callback - rotate question when countdown reaches 0
+  const handleMidnight = useCallback(() => {
+    setShowMidnightTransition(true);
+    
+    // Refetch contemplations to get updated featured question
+    setTimeout(async () => {
+      try {
+        const res = await fetch("/api/contemplations");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.length > 0) {
+            const formattedAll = data.map((c: { id: number; question: string }) => ({
+              id: c.id,
+              text: c.question,
+            }));
+            setCmsQuestions(formattedAll);
+            
+            const featured = data.find((c: { featured: boolean }) => c.featured);
+            if (featured) {
+              setFeaturedQuestionId(featured.id);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch new contemplation:", error);
+      }
+      
+      // Force re-render of question hook
+      setQuestionRotationKey(prev => prev + 1);
+      
+      // Hide transition after animation
+      setTimeout(() => {
+        setShowMidnightTransition(false);
+      }, 2000);
+    }, 500);
+  }, []);
+  
+  const countdown = useCountdownToTomorrow(handleMidnight);
+  
+  // Use the hook with CMS questions
+  const { 
+    todayQuestion: hookTodayQuestion, 
+    sortedQuestions,
+    votes, 
+    userVotes, 
+    vote, 
+  } = useQuestions(cmsQuestions.length > 0 ? cmsQuestions : undefined);
 
+  // Determine today's question - use featured if available, or rotate based on day
+  const todayQuestion = useMemo(() => {
+    if (featuredQuestionId) {
+      return cmsQuestions.find(q => q.id === featuredQuestionId) || hookTodayQuestion;
+    }
+    // Use day of year to pick question (changes at midnight)
+    if (cmsQuestions.length > 0) {
+      const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
+      const index = (dayOfYear + questionRotationKey) % cmsQuestions.length;
+      return cmsQuestions[index];
+    }
+    return hookTodayQuestion;
+  }, [featuredQuestionId, cmsQuestions, hookTodayQuestion, questionRotationKey]);
+    
+  const [selectedQuestion, setSelectedQuestion] = useState(todayQuestion);
+  
+  // Articles state for writing preview
+  const [latestArticles, setLatestArticles] = useState<Array<{ slug: string; title: string; excerpt: string; readTime: string }>>([]);
+
+  // Fetch intentions and contemplations from API
   useEffect(() => {
-    setTodayIntention(DAILY_INTENTIONS[new Date().getDate() % DAILY_INTENTIONS.length]);
+    async function fetchData() {
+      try {
+        const [intentionsRes, contemplationsRes, articlesRes] = await Promise.all([
+          fetch("/api/intentions"),
+          fetch("/api/contemplations"),
+          fetch("/api/articles"),
+        ]);
+        
+        // Handle intentions
+        if (intentionsRes.ok) {
+          const data = await intentionsRes.json();
+          if (data.length > 0) {
+            const dayIndex = new Date().getDate() % data.length;
+            setTodayIntention(data[dayIndex].text);
+          } else {
+            setTodayIntention(DAILY_INTENTIONS[new Date().getDate() % DAILY_INTENTIONS.length]);
+          }
+        }
+        
+        // Handle contemplations
+        if (contemplationsRes.ok) {
+          const data = await contemplationsRes.json();
+          if (data.length > 0) {
+            // Convert to same format as EXISTENTIAL_QUESTIONS
+            const formattedAll = data.map((c: { id: number; question: string }) => ({
+              id: c.id,
+              text: c.question,
+            }));
+            setCmsQuestions(formattedAll);
+            
+            // Find featured question
+            const featured = data.find((c: { featured: boolean }) => c.featured);
+            if (featured) {
+              setFeaturedQuestionId(featured.id);
+            }
+          }
+        }
+        
+        // Handle articles - get latest 2
+        if (articlesRes.ok) {
+          const data = await articlesRes.json();
+          setLatestArticles(data.slice(0, 2).map((a: { slug: string; title: string; excerpt: string; readTime: string }) => ({
+            slug: a.slug,
+            title: a.title,
+            excerpt: a.excerpt,
+            readTime: a.readTime,
+          })));
+        }
+      } catch (error) {
+        console.error("Failed to fetch data:", error);
+        setTodayIntention(DAILY_INTENTIONS[new Date().getDate() % DAILY_INTENTIONS.length]);
+      }
+    }
+    
+    fetchData();
     setHoursLeft(24 - new Date().getHours());
+    
+    // Auto-refresh: poll every 10 seconds to check for CMS updates
+    const refreshInterval = setInterval(fetchData, 10000);
+    return () => clearInterval(refreshInterval);
   }, []);
 
   // Zen Mode keyboard shortcut (Z)
@@ -746,8 +909,11 @@ function NowView() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isZenMode]);
 
+  // Update selected question when todayQuestion changes
   useEffect(() => {
-    setSelectedQuestion(todayQuestion);
+    if (todayQuestion) {
+      setSelectedQuestion(todayQuestion);
+    }
   }, [todayQuestion]);
 
   const handleSelectQuestion = (q: typeof todayQuestion) => {
@@ -761,6 +927,54 @@ function NowView() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
+      {/* Midnight Transition Overlay */}
+      <AnimatePresence>
+        {showMidnightTransition && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center"
+            style={{ backgroundColor: 'var(--bg-primary)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 1.1, opacity: 0 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="text-center"
+            >
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, ease: "linear" }}
+                className="text-6xl mb-6"
+              >
+                ◐
+              </motion.div>
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="text-xl font-light tracking-wider"
+                style={{ color: 'var(--accent-gold)' }}
+              >
+                A new day begins
+              </motion.p>
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                className="text-sm mt-2"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                New contemplation awaits...
+              </motion.p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Ambient floating particles - subtle background */}
       <div className="fixed inset-0 pointer-events-none">
         {[...Array(8)].map((_, i) => (
@@ -770,17 +984,19 @@ function NowView() {
             style={{ 
               backgroundColor: 'var(--accent-gold)',
               opacity: 0.1,
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
+              // Fixed positions based on index to prevent re-render jitter
+              left: `${(i * 13 + 5) % 100}%`,
+              top: `${(i * 17 + 10) % 100}%`,
             }}
             animate={{
               y: [0, -30, 0],
-              opacity: [0.1, 0.3, 0.1],
+              opacity: [0.1, 0.2, 0.1],
             }}
             transition={{
-              duration: 5 + Math.random() * 3,
+              duration: 6 + i * 0.5,
               repeat: Infinity,
               delay: i * 0.7,
+              ease: "easeInOut",
             }}
           />
         ))}
@@ -881,11 +1097,9 @@ function NowView() {
               transition={{ delay: 0.2 }}
               className="absolute -top-16 left-0 flex items-center gap-3"
             >
-              <motion.div
+              <div
                 className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: 'var(--accent-gold)' }}
-                animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
-                transition={{ duration: 2, repeat: Infinity }}
               />
               <span className="text-[10px] tracking-[0.3em] uppercase" style={{ color: 'var(--accent-gold)', opacity: 0.7 }}>
                 today's question
@@ -941,13 +1155,9 @@ function NowView() {
                     border: `1px solid ${userVotes.includes(todayQuestion.id) ? 'var(--accent-gold)' : 'var(--border-primary)'}`,
                   }}
                 >
-                  <motion.span 
-                    className="text-lg"
-                    animate={{ rotate: userVotes.includes(todayQuestion.id) ? 0 : [0, -10, 10, 0] }}
-                    transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 3 }}
-                  >
+                  <span className="text-lg">
                     ▲
-                  </motion.span>
+                  </span>
                   <div className="text-left">
                     <p className="text-2xl font-light tabular-nums" style={{ color: 'var(--text-primary)' }}>
                       {votes[todayQuestion.id] || 0}
@@ -976,13 +1186,9 @@ function NowView() {
                 <span className="text-sm tracking-wider uppercase" style={{ color: 'var(--text-secondary)' }}>
                   share your answer
                 </span>
-                <motion.span
-                  animate={{ x: [0, 4, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  style={{ color: 'var(--accent-gold)' }}
-                >
+                <span style={{ color: 'var(--accent-gold)' }}>
                   →
-                </motion.span>
+                </span>
               </motion.button>
             </motion.div>
 
@@ -998,8 +1204,6 @@ function NowView() {
                 style={{
                   backgroundColor: 'var(--bg-elevated)',
                   border: '1px solid var(--border-secondary)',
-                  transform: `translateX(${mouseX * 5}px) translateY(${mouseY * 5}px)`,
-                  transition: 'transform 0.3s ease-out'
                 }}
               >
                 <p className="text-sm italic leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
@@ -1030,16 +1234,25 @@ function NowView() {
               className="text-center"
             >
               <p className="text-[9px] tracking-[0.2em] uppercase mb-3" style={{ color: 'var(--text-muted)' }}>
-                until tomorrow
+                next contemplation
               </p>
               <div 
-                className="px-4 py-3 rounded font-mono text-xl tabular-nums"
+                className="px-4 py-3 rounded font-mono text-xl tabular-nums relative overflow-hidden"
                 style={{ 
                   backgroundColor: 'var(--bg-elevated)',
                   border: '1px solid var(--border-primary)',
                   color: 'var(--text-primary)' 
                 }}
               >
+                {/* Progress bar showing time passed today */}
+                <motion.div
+                  className="absolute bottom-0 left-0 h-0.5"
+                  style={{ backgroundColor: 'var(--accent-gold)', opacity: 0.5 }}
+                  animate={{
+                    width: `${((24 - countdown.hours - 1) / 24) * 100}%`,
+                  }}
+                  transition={{ duration: 1 }}
+                />
                 {String(countdown.hours).padStart(2, '0')}:
                 {String(countdown.minutes).padStart(2, '0')}:
                 <motion.span
@@ -1049,6 +1262,9 @@ function NowView() {
                   {String(countdown.seconds).padStart(2, '0')}
                 </motion.span>
               </div>
+              <p className="text-[8px] mt-2 opacity-60" style={{ color: 'var(--text-muted)' }}>
+                Question rotates at midnight
+              </p>
             </motion.div>
 
             {/* Previously Contemplated */}
@@ -1106,10 +1322,77 @@ function NowView() {
                 style={{ color: 'var(--text-muted)' }}
                 whileHover={{ x: 2 }}
               >
-                <span className="group-hover:underline">view all {EXISTENTIAL_QUESTIONS.length}</span>
+                <span className="group-hover:underline">view all {sortedQuestions.length}</span>
                 <span style={{ color: 'var(--accent-gold)' }}>→</span>
               </motion.button>
             </motion.div>
+
+            {/* Latest Writings Preview */}
+            {latestArticles.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.3 }}
+                className="pt-8"
+                style={{ borderTop: '1px solid var(--border-secondary)' }}
+              >
+                <Link 
+                  href="/?view=writing"
+                  className="flex items-center gap-2 mb-4 group"
+                >
+                  <span 
+                    className="text-[10px] tracking-[0.2em] uppercase"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    latest writings
+                  </span>
+                  <span 
+                    className="text-xs transition-transform group-hover:translate-x-1"
+                    style={{ color: 'var(--accent-gold)' }}
+                  >
+                    →
+                  </span>
+                </Link>
+                
+                <div className="space-y-4">
+                  {latestArticles.map((article, index) => (
+                    <Link 
+                      key={article.slug} 
+                      href={`/writing/${article.slug}`}
+                    >
+                      <motion.div
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 1.4 + index * 0.1 }}
+                        className="group cursor-pointer"
+                      >
+                        <h4 
+                          className="text-sm font-light leading-relaxed transition-colors group-hover:text-[var(--accent-gold)]"
+                          style={{ 
+                            color: 'var(--text-secondary)',
+                            fontFamily: "'EB Garamond', Georgia, serif"
+                          }}
+                        >
+                          {article.title}
+                        </h4>
+                        <p 
+                          className="text-[10px] mt-1 line-clamp-2"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {article.excerpt}
+                        </p>
+                        <span 
+                          className="text-[9px] mt-1 inline-block"
+                          style={{ color: 'var(--text-muted)', opacity: 0.6 }}
+                        >
+                          {article.readTime}
+                        </span>
+                      </motion.div>
+                    </Link>
+                  ))}
+                </div>
+              </motion.div>
+            )}
 
             {/* Signature */}
             <motion.div
@@ -1208,7 +1491,7 @@ function NowView() {
       <ContemplatedModal
         isOpen={isContemplatedModalOpen}
         onClose={() => setIsContemplatedModalOpen(false)}
-        questions={EXISTENTIAL_QUESTIONS}
+        questions={sortedQuestions}
         votes={votes}
         userVotes={userVotes}
         onVote={vote}
@@ -1236,6 +1519,9 @@ function AnswerWriterModal({ isOpen, onClose, question }: AnswerWriterModalProps
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
   const [readTime, setReadTime] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [authorName, setAuthorName] = useState("");
 
   useEffect(() => {
     const words = answer.trim().split(/\s+/).filter(w => w.length > 0);
@@ -1316,10 +1602,45 @@ function AnswerWriterModal({ isOpen, onClose, question }: AnswerWriterModalProps
     });
   };
 
-  const handleSave = () => {
-    console.log("Saved answer:", answer);
-    onClose();
-    setAnswer("");
+  const handleSave = async () => {
+    if (!answer.trim() || !authorName.trim()) return;
+    
+    setIsSubmitting(true);
+    setSubmitStatus('idle');
+    
+    try {
+      const colors = ['gold', 'sage', 'stone', 'amber', 'bronze'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+      
+      const res = await fetch('/api/answers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          answer: answer.trim(),
+          author: authorName.trim(),
+          color: randomColor,
+        }),
+      });
+      
+      if (res.ok) {
+        setSubmitStatus('success');
+        // Wait for user to see success message before closing
+        setTimeout(() => {
+          onClose();
+          setAnswer("");
+          setAuthorName("");
+          setSubmitStatus('idle');
+        }, 2500);
+      } else {
+        setSubmitStatus('error');
+      }
+    } catch (error) {
+      console.error('Failed to submit answer:', error);
+      setSubmitStatus('error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -1449,6 +1770,51 @@ function AnswerWriterModal({ isOpen, onClose, question }: AnswerWriterModalProps
           className="fixed bottom-0 left-0 right-0"
           style={{ backgroundColor: 'var(--bg-primary)' }}
         >
+          {/* Success Message Overlay */}
+          <AnimatePresence>
+            {submitStatus === 'success' && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="absolute inset-0 flex items-center justify-center"
+                style={{ backgroundColor: 'var(--bg-primary)' }}
+              >
+                <div className="text-center">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', damping: 15 }}
+                    className="text-4xl mb-3"
+                  >
+                    ✓
+                  </motion.div>
+                  <p className="text-sm" style={{ color: 'var(--accent-gold)' }}>
+                    Your reflection has been submitted
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    Pending approval before appearing on the Board of Collective
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Error Message */}
+          <AnimatePresence>
+            {submitStatus === 'error' && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute top-0 left-0 right-0 text-center py-2 text-xs"
+                style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}
+              >
+                Failed to submit. Please try again.
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
             {/* Stats - left side */}
             <div className="flex items-center gap-6 text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -1474,21 +1840,46 @@ function AnswerWriterModal({ isOpen, onClose, question }: AnswerWriterModalProps
               )}
             </div>
 
-            {/* Save button - minimal */}
-            <motion.button
-              onClick={handleSave}
-              disabled={!answer.trim()}
-              className="flex items-center gap-2 px-5 py-2 rounded-full text-sm transition-all disabled:opacity-30"
-              style={{ 
-                backgroundColor: answer.trim() ? 'var(--accent-gold)' : 'var(--bg-elevated)',
-                color: answer.trim() ? 'var(--bg-primary)' : 'var(--text-muted)',
-              }}
-              whileHover={answer.trim() ? { scale: 1.02 } : {}}
-              whileTap={answer.trim() ? { scale: 0.98 } : {}}
-            >
-              <span>Share</span>
-              <span>→</span>
-            </motion.button>
+            {/* Author input & Save button - right side */}
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                value={authorName}
+                onChange={(e) => setAuthorName(e.target.value)}
+                placeholder="Your name"
+                className="px-3 py-1.5 rounded-lg text-sm bg-transparent outline-none"
+                style={{ 
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-secondary)',
+                  width: '140px',
+                }}
+              />
+              <motion.button
+                onClick={handleSave}
+                disabled={!answer.trim() || !authorName.trim() || isSubmitting}
+                className="flex items-center gap-2 px-5 py-2 rounded-full text-sm transition-all disabled:opacity-30"
+                style={{ 
+                  backgroundColor: answer.trim() && authorName.trim() ? 'var(--accent-gold)' : 'var(--bg-elevated)',
+                  color: answer.trim() && authorName.trim() ? 'var(--bg-primary)' : 'var(--text-muted)',
+                }}
+                whileHover={answer.trim() && authorName.trim() ? { scale: 1.02 } : {}}
+                whileTap={answer.trim() && authorName.trim() ? { scale: 0.98 } : {}}
+              >
+                {isSubmitting ? (
+                  <motion.span
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  >
+                    ◐
+                  </motion.span>
+                ) : (
+                  <>
+                    <span>Share</span>
+                    <span>→</span>
+                  </>
+                )}
+              </motion.button>
+            </div>
           </div>
         </motion.div>
 
@@ -1723,7 +2114,20 @@ function WritingView() {
   const [quotes, setQuotes] = useState(STOIC_QUOTES_FALLBACK);
   const [loading, setLoading] = useState(true);
   const [typewriterText, setTypewriterText] = useState("");
-  const [currentQuoteIndex] = useState(0);
+  const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
+
+  // Get random quote index based on current hour (changes every hour)
+  const getHourlyRandomIndex = useCallback((quotesLength: number) => {
+    if (quotesLength === 0) return 0;
+    const now = new Date();
+    // Create a seed from year, month, day, and hour
+    const seed = now.getFullYear() * 1000000 + 
+                 (now.getMonth() + 1) * 10000 + 
+                 now.getDate() * 100 + 
+                 now.getHours();
+    // Simple hash to get pseudo-random but consistent index for the hour
+    return seed % quotesLength;
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
@@ -1742,6 +2146,8 @@ function WritingView() {
           const quotesData = await quotesRes.json();
           if (quotesData.length > 0) {
             setQuotes(quotesData);
+            // Set initial random index based on hour
+            setCurrentQuoteIndex(getHourlyRandomIndex(quotesData.length));
           }
         }
       } catch (error) {
@@ -1751,7 +2157,34 @@ function WritingView() {
       }
     }
     fetchData();
-  }, []);
+    
+    // Auto-refresh: poll every 10 seconds to check for CMS updates
+    const refreshInterval = setInterval(fetchData, 10000);
+    return () => clearInterval(refreshInterval);
+  }, [getHourlyRandomIndex]);
+
+  // Update quote every hour
+  useEffect(() => {
+    if (quotes.length === 0) return;
+    
+    // Calculate time until next hour
+    const now = new Date();
+    const msUntilNextHour = (60 - now.getMinutes()) * 60 * 1000 - now.getSeconds() * 1000;
+    
+    // Set timeout for next hour change
+    const timeout = setTimeout(() => {
+      setCurrentQuoteIndex(getHourlyRandomIndex(quotes.length));
+      
+      // Then set interval for every hour after that
+      const interval = setInterval(() => {
+        setCurrentQuoteIndex(getHourlyRandomIndex(quotes.length));
+      }, 60 * 60 * 1000); // Every hour
+      
+      return () => clearInterval(interval);
+    }, msUntilNextHour);
+    
+    return () => clearTimeout(timeout);
+  }, [quotes.length, getHourlyRandomIndex]);
   
   const currentQuote = quotes[currentQuoteIndex];
   const fullText = currentQuote?.text || "";
@@ -1947,28 +2380,83 @@ interface Project {
 
 function WorkView() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [quotes, setQuotes] = useState(STOIC_QUOTES_FALLBACK);
   const [loading, setLoading] = useState(true);
   const [typewriterText, setTypewriterText] = useState("");
-  const fullText = "What stands in the way becomes the way.";
+  const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
+
+  // Get random quote index based on current hour (changes every hour)
+  // Use a different seed offset for Work section so it shows different quote than Writing
+  const getHourlyRandomIndex = useCallback((quotesLength: number) => {
+    if (quotesLength === 0) return 0;
+    const now = new Date();
+    // Create a seed from year, month, day, and hour + offset for different section
+    const seed = now.getFullYear() * 1000000 + 
+                 (now.getMonth() + 1) * 10000 + 
+                 now.getDate() * 100 + 
+                 now.getHours() + 42; // offset to show different quote than Writing
+    // Simple hash to get pseudo-random but consistent index for the hour
+    return seed % quotesLength;
+  }, []);
 
   useEffect(() => {
-    async function fetchProjects() {
+    async function fetchData() {
       try {
-        const res = await fetch("/api/projects");
-        if (res.ok) {
-          const data = await res.json();
+        const [projectsRes, quotesRes] = await Promise.all([
+          fetch("/api/projects"),
+          fetch("/api/quotes"),
+        ]);
+        
+        if (projectsRes.ok) {
+          const data = await projectsRes.json();
           setProjects(data);
         }
+        
+        if (quotesRes.ok) {
+          const quotesData = await quotesRes.json();
+          if (quotesData.length > 0) {
+            setQuotes(quotesData);
+            setCurrentQuoteIndex(getHourlyRandomIndex(quotesData.length));
+          }
+        }
       } catch (error) {
-        console.error("Failed to fetch projects:", error);
+        console.error("Failed to fetch data:", error);
       } finally {
         setLoading(false);
       }
     }
-    fetchProjects();
-  }, []);
+    fetchData();
+    
+    // Auto-refresh: poll every 10 seconds to check for CMS updates
+    const refreshInterval = setInterval(fetchData, 10000);
+    return () => clearInterval(refreshInterval);
+  }, [getHourlyRandomIndex]);
+
+  // Update quote every hour
+  useEffect(() => {
+    if (quotes.length === 0) return;
+    
+    const now = new Date();
+    const msUntilNextHour = (60 - now.getMinutes()) * 60 * 1000 - now.getSeconds() * 1000;
+    
+    const timeout = setTimeout(() => {
+      setCurrentQuoteIndex(getHourlyRandomIndex(quotes.length));
+      
+      const interval = setInterval(() => {
+        setCurrentQuoteIndex(getHourlyRandomIndex(quotes.length));
+      }, 60 * 60 * 1000);
+      
+      return () => clearInterval(interval);
+    }, msUntilNextHour);
+    
+    return () => clearTimeout(timeout);
+  }, [quotes.length, getHourlyRandomIndex]);
+
+  const currentQuote = quotes[currentQuoteIndex];
+  const fullText = currentQuote?.text || "";
 
   useEffect(() => {
+    if (!fullText) return;
     let i = 0;
     const timer = setInterval(() => {
       if (i <= fullText.length) {
@@ -1980,7 +2468,7 @@ function WorkView() {
     }, 50);
     
     return () => clearInterval(timer);
-  }, []);
+  }, [fullText]);
 
   // Generate contribution data (52 weeks)
   const generateContributions = () => {
@@ -2049,7 +2537,7 @@ function WorkView() {
               />
             </p>
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              — Marcus Aurelius, <span className="italic">Meditations V.20</span>
+              — {currentQuote?.author}{currentQuote?.source && <>, <span className="italic">{currentQuote.source}</span></>}
             </p>
           </div>
         </motion.div>
@@ -2667,136 +3155,182 @@ function VoicesView() {
 
 // ═══════════════════════════════════════════════════════════════════
 // COLLECTIVE VIEW - Board of Collective Wisdom
+// Now fetches from API and allows users to submit answers
 // ═══════════════════════════════════════════════════════════════════
 
-const COLLECTIVE_ANSWERS = [
-  {
-    id: 1,
-    question: "What would you do if you knew you could not fail?",
-    answer: "I'd finally write that book about my grandmother's journey. Fear of imperfection has silenced me for years.",
-    author: "Anonymous Seeker",
-    color: "#fef3c7", // warm yellow
-    rotation: -2,
-    likes: 47,
-  },
-  {
-    id: 2,
-    question: "What truth are you avoiding?",
-    answer: "That I'm staying in this job not because of security, but because I'm afraid to discover what I'm truly capable of.",
-    author: "A Wanderer",
-    color: "#dbeafe", // soft blue
-    rotation: 3,
-    likes: 89,
-  },
-  {
-    id: 3,
-    question: "If today were your last, what would remain undone?",
-    answer: "Telling my father I forgive him. Every day I wait is a day stolen from both of us.",
-    author: "Still Learning",
-    color: "#fce7f3", // soft pink
-    rotation: -1,
-    likes: 124,
-  },
-  {
-    id: 4,
-    question: "What do you fear most about success?",
-    answer: "That people will finally see me—really see me—and find me wanting.",
-    author: "Quiet Observer",
-    color: "#d1fae5", // mint green
-    rotation: 2,
-    likes: 76,
-  },
-  {
-    id: 5,
-    question: "What would your 80-year-old self tell you?",
-    answer: "Stop rehearsing your life. Start living it. The audience you're performing for doesn't exist.",
-    author: "Future Self",
-    color: "#e0e7ff", // lavender
-    rotation: -3,
-    likes: 201,
-  },
-  {
-    id: 6,
-    question: "What are you pretending not to know?",
-    answer: "That this relationship ended long ago. We're just two people haunting the same house now.",
-    author: "Honest Heart",
-    color: "#fef9c3", // pale yellow
-    rotation: 1,
-    likes: 156,
-  },
-  {
-    id: 7,
-    question: "What would you do if you knew you could not fail?",
-    answer: "Leave everything and move to a small village in Portugal. Make pottery. Grow tomatoes. Finally breathe.",
-    author: "Dreamer",
-    color: "#fed7aa", // peach
-    rotation: -2,
-    likes: 93,
-  },
-  {
-    id: 8,
-    question: "What truth are you avoiding?",
-    answer: "I use busyness as a shield. If I'm always running, I never have to sit with who I've become.",
-    author: "The Runner",
-    color: "#c7d2fe", // soft indigo
-    rotation: 4,
-    likes: 112,
-  },
-  {
-    id: 9,
-    question: "If today were your last, what would remain undone?",
-    answer: "Dancing. Just dancing. Not for anyone, just for the joy of having a body that moves.",
-    author: "The Still One",
-    color: "#fbcfe8", // rose
-    rotation: -1,
-    likes: 67,
-  },
-  {
-    id: 10,
-    question: "What do you fear most about success?",
-    answer: "That I'll get there and realize I climbed the wrong mountain entirely.",
-    author: "The Climber",
-    color: "#a7f3d0", // light emerald
-    rotation: 2,
-    likes: 145,
-  },
-  {
-    id: 11,
-    question: "What would your 80-year-old self tell you?",
-    answer: "The things you're embarrassed about now are the stories you'll tell with the biggest smile later.",
-    author: "Old Soul",
-    color: "#fde68a", // amber
-    rotation: -4,
-    likes: 178,
-  },
-  {
-    id: 12,
-    question: "What are you pretending not to know?",
-    answer: "That I already have enough. The hunger is manufactured.",
-    author: "Awakening",
-    color: "#bfdbfe", // sky blue
-    rotation: 1,
-    likes: 234,
-  },
-];
+interface Contemplation {
+  id: number;
+  question: string;
+  featured: boolean;
+  answers?: StickyNoteData[];
+}
+
+interface StickyNoteData {
+  id: number;
+  question: string;
+  answer: string;
+  author: string;
+  color: string;
+  rotation: number;
+  positionX: number;
+  positionY: number;
+  contemplationId?: number | null;
+}
+
+// Color mapping for sticky notes
+const stickyColors: Record<string, string> = {
+  gold: "#fef3c7",
+  sage: "#d1fae5",
+  stone: "#e7e5e4",
+  amber: "#fed7aa",
+  bronze: "#fde68a",
+};
 
 function CollectiveView() {
-  const [selectedNote, setSelectedNote] = useState<typeof COLLECTIVE_ANSWERS[0] | null>(null);
+  const [contemplations, setContemplations] = useState<Contemplation[]>([]);
+  const [answers, setAnswers] = useState<StickyNoteData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedNote, setSelectedNote] = useState<StickyNoteData | null>(null);
   const [filter, setFilter] = useState<string | null>(null);
-  const { x: mouseX, y: mouseY } = useMouseParallax();
+  const [showAnswerForm, setShowAnswerForm] = useState(false);
+  const [selectedQuestion, setSelectedQuestion] = useState<Contemplation | null>(null);
+  const [answerText, setAnswerText] = useState("");
+  const [authorName, setAuthorName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const { x: mouseX } = useMouseParallax();
 
-  const questions = [...new Set(COLLECTIVE_ANSWERS.map(a => a.question))];
+  // Fetch contemplations and answers
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [contRes, ansRes] = await Promise.all([
+          fetch("/api/contemplations"),
+          fetch("/api/answers"),
+        ]);
+        
+        if (contRes.ok) {
+          const data = await contRes.json();
+          setContemplations(data);
+          // Set featured as default selected question
+          const featured = data.find((c: Contemplation) => c.featured);
+          if (featured) setSelectedQuestion(featured);
+        }
+        
+        if (ansRes.ok) {
+          const data = await ansRes.json();
+          setAnswers(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch collective data:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+    
+    // Auto-refresh: poll every 10 seconds to check for CMS updates
+    const refreshInterval = setInterval(fetchData, 10000);
+    return () => clearInterval(refreshInterval);
+  }, []);
+
+  // Submit answer
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!answerText.trim() || !authorName.trim()) return;
+    
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/answers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          answer: answerText.trim(),
+          author: authorName.trim(),
+          contemplationId: selectedQuestion?.id,
+          question: selectedQuestion?.question,
+        }),
+      });
+      
+      if (res.ok) {
+        const newAnswer = await res.json();
+        setAnswers([newAnswer, ...answers]);
+        setAnswerText("");
+        setShowAnswerForm(false);
+      }
+    } catch (error) {
+      console.error("Failed to submit answer:", error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const questions = [...new Set(answers.map(a => a.question))];
   const filteredAnswers = filter 
-    ? COLLECTIVE_ANSWERS.filter(a => a.question === filter)
-    : COLLECTIVE_ANSWERS;
+    ? answers.filter(a => a.question === filter)
+    : answers;
+
+  const featuredContemplation = contemplations.find(c => c.featured);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="text-2xl"
+          style={{ color: "var(--accent-gold)" }}
+        >
+          ◐
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen px-4 sm:px-6 py-24 sm:py-32">
+      {/* Contemplation Hero */}
+      {featuredContemplation && (
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          className="max-w-4xl mx-auto mb-20 text-center"
+        >
+          <p className="text-xs uppercase tracking-[0.3em] mb-6" style={{ color: 'var(--accent-gold)' }}>
+            Today's Contemplation
+          </p>
+          <h2 
+            className="text-3xl sm:text-4xl md:text-5xl font-extralight leading-tight mb-8 italic"
+            style={{ 
+              color: 'var(--text-primary)',
+              fontFamily: "'Georgia', serif",
+            }}
+          >
+            "{featuredContemplation.question}"
+          </h2>
+          <motion.button
+            onClick={() => {
+              setSelectedQuestion(featuredContemplation);
+              setShowAnswerForm(true);
+            }}
+            className="px-8 py-3 rounded-full text-sm font-medium transition-all"
+            style={{
+              backgroundColor: 'var(--accent-gold)',
+              color: 'var(--bg-primary)',
+            }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            Share Your Reflection
+          </motion.button>
+        </motion.div>
+      )}
+
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
+        transition={{ duration: 0.8, delay: 0.2 }}
         className="max-w-6xl mx-auto mb-12 text-center"
       >
         <h1 
@@ -2828,7 +3362,7 @@ function CollectiveView() {
           >
             All
           </motion.button>
-          {questions.map((q, i) => (
+          {questions.slice(0, 6).map((q, i) => (
             <motion.button
               key={i}
               onClick={() => setFilter(q)}
@@ -2846,6 +3380,46 @@ function CollectiveView() {
           ))}
         </div>
       </motion.div>
+
+      {/* All Contemplation Questions */}
+      {contemplations.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="max-w-4xl mx-auto mb-16"
+        >
+          <h3 className="text-xs uppercase tracking-widest mb-6 text-center" style={{ color: 'var(--text-muted)' }}>
+            Questions for Reflection
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {contemplations.map((c) => (
+              <motion.div
+                key={c.id}
+                className="p-4 rounded-lg cursor-pointer transition-all"
+                style={{
+                  backgroundColor: 'var(--bg-elevated)',
+                  border: c.featured ? '1px solid var(--accent-gold)' : '1px solid var(--border-primary)',
+                }}
+                whileHover={{ scale: 1.02, borderColor: 'var(--accent-gold)' }}
+                onClick={() => {
+                  setSelectedQuestion(c);
+                  setShowAnswerForm(true);
+                }}
+              >
+                <p className="text-sm font-light italic" style={{ color: 'var(--text-secondary)' }}>
+                  "{c.question}"
+                </p>
+                {c.featured && (
+                  <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(201,162,39,0.2)', color: 'var(--accent-gold)' }}>
+                    Featured
+                  </span>
+                )}
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Cork Board */}
       <div className="max-w-7xl mx-auto relative">
@@ -2892,7 +3466,7 @@ function CollectiveView() {
               <div 
                 className="p-6 pt-8 min-h-[200px] flex flex-col transition-shadow"
                 style={{
-                  backgroundColor: note.color,
+                  backgroundColor: stickyColors[note.color] || note.color || stickyColors.gold,
                   boxShadow: '2px 4px 12px rgba(0,0,0,0.15)',
                 }}
               >
@@ -2923,16 +3497,31 @@ function CollectiveView() {
                   >
                     — {note.author}
                   </span>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>
-                      ♥ {note.likes}
-                    </span>
-                  </div>
                 </div>
               </div>
             </motion.div>
           ))}
         </div>
+
+        {/* Empty State */}
+        {filteredAnswers.length === 0 && (
+          <div className="text-center py-20">
+            <p className="text-lg font-light mb-4" style={{ color: 'var(--text-muted)' }}>
+              No reflections yet. Be the first to share.
+            </p>
+            <motion.button
+              onClick={() => setShowAnswerForm(true)}
+              className="px-6 py-3 rounded-full text-sm"
+              style={{
+                backgroundColor: 'var(--accent-gold)',
+                color: 'var(--bg-primary)',
+              }}
+              whileHover={{ scale: 1.05 }}
+            >
+              Share Your Wisdom
+            </motion.button>
+          </div>
+        )}
       </div>
 
       {/* Expanded Note Modal */}
@@ -2968,7 +3557,7 @@ function CollectiveView() {
               <div 
                 className="p-8 pt-10"
                 style={{
-                  backgroundColor: selectedNote.color,
+                  backgroundColor: stickyColors[selectedNote.color] || selectedNote.color || stickyColors.gold,
                   boxShadow: '4px 8px 24px rgba(0,0,0,0.25)',
                 }}
               >
@@ -2999,21 +3588,127 @@ function CollectiveView() {
                   >
                     — {selectedNote.author}
                   </span>
-                  <div className="flex items-center gap-2">
-                    <motion.button
-                      className="flex items-center gap-1 px-3 py-1 rounded-full text-sm"
-                      style={{ 
-                        backgroundColor: 'rgba(0,0,0,0.1)',
-                        color: 'rgba(0,0,0,0.6)',
-                      }}
-                      whileHover={{ scale: 1.05, backgroundColor: 'rgba(0,0,0,0.15)' }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      ♥ {selectedNote.likes}
-                    </motion.button>
-                  </div>
                 </div>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Answer Form Modal */}
+      <AnimatePresence>
+        {showAnswerForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            onClick={() => setShowAnswerForm(false)}
+          >
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-xl w-full z-10 rounded-xl p-8"
+              style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-primary)' }}
+            >
+              <button
+                onClick={() => setShowAnswerForm(false)}
+                className="absolute top-4 right-4 text-xl opacity-50 hover:opacity-100"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                ×
+              </button>
+
+              <h3 className="text-2xl font-light mb-2" style={{ color: 'var(--text-primary)' }}>
+                Share Your Reflection
+              </h3>
+              
+              {/* Question selector */}
+              <div className="mb-6">
+                <label className="block text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>
+                  Question
+                </label>
+                <select
+                  value={selectedQuestion?.id || ""}
+                  onChange={(e) => {
+                    const q = contemplations.find(c => c.id === Number(e.target.value));
+                    setSelectedQuestion(q || null);
+                  }}
+                  className="w-full px-4 py-3 rounded-lg text-sm"
+                  style={{
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-primary)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="">Select a question...</option>
+                  {contemplations.map(c => (
+                    <option key={c.id} value={c.id}>{c.question}</option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedQuestion && (
+                <p className="text-lg font-light italic mb-6" style={{ color: 'var(--text-secondary)' }}>
+                  "{selectedQuestion.question}"
+                </p>
+              )}
+
+              <form onSubmit={handleSubmit}>
+                <div className="mb-4">
+                  <label className="block text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>
+                    Your Answer
+                  </label>
+                  <textarea
+                    value={answerText}
+                    onChange={(e) => setAnswerText(e.target.value)}
+                    placeholder="Share your wisdom..."
+                    rows={4}
+                    className="w-full px-4 py-3 rounded-lg text-sm resize-none"
+                    style={{
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-primary)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>
+                    Your Name (or Anonymous)
+                  </label>
+                  <input
+                    type="text"
+                    value={authorName}
+                    onChange={(e) => setAuthorName(e.target.value)}
+                    placeholder="A Fellow Seeker"
+                    className="w-full px-4 py-3 rounded-lg text-sm"
+                    style={{
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-primary)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                </div>
+
+                <motion.button
+                  type="submit"
+                  disabled={submitting || !answerText.trim() || !authorName.trim()}
+                  className="w-full py-3 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+                  style={{
+                    backgroundColor: 'var(--accent-gold)',
+                    color: 'var(--bg-primary)',
+                  }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {submitting ? "Sharing..." : "Share Reflection"}
+                </motion.button>
+              </form>
             </motion.div>
           </motion.div>
         )}
@@ -3028,7 +3723,7 @@ function CollectiveView() {
       >
         <div>
           <p className="text-3xl font-light" style={{ color: 'var(--accent-gold)' }}>
-            {COLLECTIVE_ANSWERS.length}
+            {answers.length}
           </p>
           <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
             Reflections
@@ -3037,19 +3732,10 @@ function CollectiveView() {
         <div className="w-px h-8" style={{ backgroundColor: 'var(--border-primary)' }} />
         <div>
           <p className="text-3xl font-light" style={{ color: 'var(--accent-gold)' }}>
-            {questions.length}
+            {contemplations.length}
           </p>
           <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
             Questions
-          </p>
-        </div>
-        <div className="w-px h-8" style={{ backgroundColor: 'var(--border-primary)' }} />
-        <div>
-          <p className="text-3xl font-light" style={{ color: 'var(--accent-gold)' }}>
-            {COLLECTIVE_ANSWERS.reduce((acc, n) => acc + n.likes, 0)}
-          </p>
-          <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-            Hearts
           </p>
         </div>
       </motion.div>
@@ -3159,6 +3845,33 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [view, setView] = useState("now");
   const [mounted, setMounted] = useState(false);
+
+  // Restore view from URL or localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Check URL query param first
+      const urlParams = new URLSearchParams(window.location.search);
+      const viewParam = urlParams.get('view');
+      if (viewParam && ['now', 'writing', 'work', 'about'].includes(viewParam)) {
+        setView(viewParam);
+        // Clear the URL param
+        window.history.replaceState({}, '', '/');
+        return;
+      }
+      // Otherwise check localStorage
+      const savedView = localStorage.getItem('currentView');
+      if (savedView && ['now', 'writing', 'work', 'about'].includes(savedView)) {
+        setView(savedView);
+      }
+    }
+  }, []);
+
+  // Save view to localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && mounted) {
+      localStorage.setItem('currentView', view);
+    }
+  }, [view, mounted]);
   const { theme, setTheme } = useTheme();
   const { enabled: soundEnabled, toggle: toggleSound, play } = useSound();
   

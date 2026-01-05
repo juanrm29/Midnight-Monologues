@@ -562,21 +562,36 @@ export default function ArticlesManager() {
               >
                 {articles.length} article{articles.length !== 1 ? "s" : ""}
               </p>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  setSelectedArticle({ ...EMPTY_ARTICLE });
-                  setIsEditing(true);
-                }}
-                className="px-4 py-2 rounded-lg text-sm font-medium"
-                style={{ 
-                  backgroundColor: "var(--accent-gold)",
-                  color: "var(--bg-primary)"
-                }}
-              >
-                + New Article
-              </motion.button>
+              <div className="flex gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    setSelectedArticle({ ...EMPTY_ARTICLE });
+                    setIsEditing(true);
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm"
+                  style={{ 
+                    backgroundColor: "var(--bg-elevated)",
+                    border: "1px solid var(--border-primary)",
+                    color: "var(--text-secondary)"
+                  }}
+                >
+                  + Quick Edit
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => window.location.href = "/admin/articles/write"}
+                  className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                  style={{ 
+                    backgroundColor: "var(--accent-gold)",
+                    color: "var(--bg-primary)"
+                  }}
+                >
+                  <span>✦</span> Focus Writer
+                </motion.button>
+              </div>
             </div>
 
             {/* Articles List */}
@@ -642,6 +657,17 @@ export default function ArticlesManager() {
                         }}
                       >
                         Edit
+                      </button>
+                      <button
+                        onClick={() => window.location.href = `/admin/articles/write?id=${article.id}`}
+                        className="px-3 py-1 rounded-lg text-xs transition-opacity hover:opacity-70"
+                        style={{ 
+                          backgroundColor: "var(--accent-gold-dim)",
+                          border: "1px solid var(--accent-gold)",
+                          color: "var(--accent-gold)"
+                        }}
+                      >
+                        ✦ Focus
                       </button>
                       <button
                         onClick={() => setShowDeleteConfirm(article.id)}

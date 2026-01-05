@@ -12,7 +12,10 @@ interface DashboardStats {
   articles: { total: number; featured: number };
   projects: { total: number; featured: number };
   quotes: { total: number };
+  intentions: { total: number };
+  contemplations: { total: number; featured: number };
   notes: { total: number };
+  pendingAnswers: number;
   profile: { name: string; title: string; bio: string };
   recentArticles: Array<{
     id: number;
@@ -20,6 +23,7 @@ interface DashboardStats {
     title: string;
     date: string;
     readTime: string;
+    featured?: boolean;
   }>;
 }
 
@@ -41,19 +45,25 @@ export default function AdminDashboard() {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const [articlesRes, projectsRes, quotesRes, notesRes, profileRes] = await Promise.all([
+      const [articlesRes, projectsRes, quotesRes, intentionsRes, contemplationsRes, notesRes, profileRes, pendingRes] = await Promise.all([
         fetch("/api/articles"),
         fetch("/api/projects"),
         fetch("/api/quotes"),
+        fetch("/api/intentions"),
+        fetch("/api/contemplations"),
         fetch("/api/notes"),
         fetch("/api/profile"),
+        fetch("/api/answers?pending=true"),
       ]);
 
       const articles = articlesRes.ok ? await articlesRes.json() : [];
       const projects = projectsRes.ok ? await projectsRes.json() : [];
       const quotes = quotesRes.ok ? await quotesRes.json() : [];
+      const intentions = intentionsRes.ok ? await intentionsRes.json() : [];
+      const contemplations = contemplationsRes.ok ? await contemplationsRes.json() : [];
       const notes = notesRes.ok ? await notesRes.json() : [];
       const profile = profileRes.ok ? await profileRes.json() : { name: "User", title: "Developer", bio: "" };
+      const pendingAnswers = pendingRes.ok ? await pendingRes.json() : [];
 
       const recentArticles = articles
         .sort((a: { date: string }, b: { date: string }) => 
@@ -71,7 +81,13 @@ export default function AdminDashboard() {
           featured: projects.filter((p: { featured: boolean }) => p.featured).length 
         },
         quotes: { total: quotes.length },
+        intentions: { total: intentions.length },
+        contemplations: {
+          total: contemplations.length,
+          featured: contemplations.filter((c: { featured: boolean }) => c.featured).length
+        },
         notes: { total: notes.length },
+        pendingAnswers: pendingAnswers.length,
         profile: { name: profile.name, title: profile.title || "Developer", bio: profile.bio || "" },
         recentArticles,
       });
@@ -97,7 +113,7 @@ export default function AdminDashboard() {
     );
   }
 
-  const stats = [
+  const stats: Array<{ label: string; value: number; icon: string; href: string; featured: number; alert?: boolean }> = [
     { 
       label: "Articles", 
       value: dashboardStats.articles.total, 
@@ -120,11 +136,33 @@ export default function AdminDashboard() {
       featured: 0
     },
     { 
+      label: "Intentions", 
+      value: dashboardStats.intentions?.total || 0, 
+      icon: "◐", 
+      href: "/admin/intentions",
+      featured: 0
+    },
+    { 
+      label: "Contemplations", 
+      value: dashboardStats.contemplations?.total || 0, 
+      icon: "◇", 
+      href: "/admin/contemplations",
+      featured: dashboardStats.contemplations?.featured || 0
+    },
+    { 
       label: "Collective Notes", 
       value: dashboardStats.notes.total, 
       icon: "▣", 
       href: "/admin/collective",
       featured: 0
+    },
+    { 
+      label: "Pending Answers", 
+      value: dashboardStats.pendingAnswers || 0, 
+      icon: "⚠", 
+      href: "/admin/answers",
+      featured: 0,
+      alert: (dashboardStats.pendingAnswers || 0) > 0
     },
   ];
 
@@ -132,6 +170,8 @@ export default function AdminDashboard() {
     { label: "New Article", href: "/admin/articles?new=true", icon: "+" },
     { label: "New Project", href: "/admin/projects?new=true", icon: "+" },
     { label: "Add Quote", href: "/admin/quotes?new=true", icon: "+" },
+    { label: "Add Intention", href: "/admin/intentions", icon: "+" },
+    { label: "Add Contemplation", href: "/admin/contemplations", icon: "+" },
     { label: "Edit Profile", href: "/admin/profile", icon: "→" },
   ];
 
@@ -187,38 +227,47 @@ export default function AdminDashboard() {
           >
             <Link href={stat.href}>
               <div 
-                className="p-6 rounded-xl transition-all duration-200 hover:scale-[1.02] cursor-pointer group"
+                className="p-6 rounded-xl transition-all duration-200 hover:scale-[1.02] cursor-pointer group relative"
                 style={{ 
-                  backgroundColor: "var(--bg-elevated)",
-                  border: "1px solid var(--border-primary)"
+                  backgroundColor: stat.alert ? "rgba(239,68,68,0.1)" : "var(--bg-elevated)",
+                  border: stat.alert ? "1px solid rgba(239,68,68,0.3)" : "1px solid var(--border-primary)"
                 }}
               >
+                {/* Alert pulse */}
+                {stat.alert && (
+                  <motion.div
+                    className="absolute top-3 right-3 w-2 h-2 rounded-full"
+                    style={{ backgroundColor: "#ef4444" }}
+                    animate={{ scale: [1, 1.3, 1], opacity: [1, 0.7, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                  />
+                )}
                 <div className="flex items-center justify-between mb-4">
                   <span 
                     className="text-2xl"
-                    style={{ color: "var(--accent-gold)" }}
+                    style={{ color: stat.alert ? "#ef4444" : "var(--accent-gold)" }}
                   >
                     {stat.icon}
                   </span>
                   <span 
                     className="text-xs px-2 py-1 rounded"
                     style={{ 
-                      backgroundColor: "var(--bg-primary)",
-                      color: "var(--text-muted)"
+                      backgroundColor: stat.alert ? "rgba(239,68,68,0.2)" : "var(--bg-primary)",
+                      color: stat.alert ? "#ef4444" : "var(--text-muted)"
                     }}
                   >
-                    {stat.featured > 0 ? `${stat.featured} featured` : "View all"}
+                    {stat.alert ? "Needs review" : stat.featured > 0 ? `${stat.featured} featured` : "View all"}
                   </span>
                 </div>
                 <p 
                   className="text-3xl font-light mb-1 group-hover:opacity-70 transition-opacity"
-                  style={{ color: "var(--text-primary)" }}
+                  style={{ color: stat.alert ? "#ef4444" : "var(--text-primary)" }}
                 >
                   {stat.value}
                 </p>
                 <p 
                   className="text-sm"
-                  style={{ color: "var(--text-muted)" }}
+                  style={{ color: stat.alert ? "rgba(239,68,68,0.7)" : "var(--text-muted)" }}
                 >
                   {stat.label}
                 </p>

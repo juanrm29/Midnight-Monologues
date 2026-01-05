@@ -25,11 +25,24 @@ export async function GET(
       return NextResponse.json({ error: "Article not found" }, { status: 404 });
     }
 
+    // Try to parse content - if it's a JSON array (legacy), parse it
+    // If it's a plain string (markdown), keep it as-is
+    let content;
+    try {
+      const parsed = JSON.parse(article.content || "\"\"");
+      // If it's an array, it's legacy ContentBlocks format
+      // If it's a string, it's markdown
+      content = parsed;
+    } catch {
+      // If JSON parse fails, treat as raw markdown string
+      content = article.content || "";
+    }
+
     return NextResponse.json({
       ...article,
       tags: JSON.parse(article.tags || "[]"),
       epigraph: article.epigraph ? JSON.parse(article.epigraph) : null,
-      content: JSON.parse(article.content || "[]"),
+      content,
     });
   } catch (error) {
     console.error("Error fetching article:", error);
@@ -57,15 +70,24 @@ export async function PUT(
         tags: JSON.stringify(body.tags || []),
         featured: body.featured || false,
         epigraph: body.epigraph ? JSON.stringify(body.epigraph) : null,
-        content: JSON.stringify(body.content || []),
+        // Store content as JSON - works for both string (markdown) and array (legacy)
+        content: JSON.stringify(body.content ?? ""),
       },
     });
+
+    // Parse content for response
+    let responseContent;
+    try {
+      responseContent = JSON.parse(article.content);
+    } catch {
+      responseContent = article.content;
+    }
 
     return NextResponse.json({
       ...article,
       tags: JSON.parse(article.tags),
       epigraph: article.epigraph ? JSON.parse(article.epigraph) : null,
-      content: JSON.parse(article.content),
+      content: responseContent,
     });
   } catch (error) {
     console.error("Error updating article:", error);
