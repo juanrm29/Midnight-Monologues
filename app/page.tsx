@@ -3037,12 +3037,111 @@ function CollectiveView() {
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════
 
+// Minimal Sunrise/Sunset Theme Transition
+interface ThemeTransitionProps {
+  isTransitioning: boolean;
+  direction: 'sunrise' | 'sunset';
+  onComplete: () => void;
+}
+
+function ThemeTransition({ isTransitioning, direction, onComplete }: ThemeTransitionProps) {
+  useEffect(() => {
+    if (!isTransitioning) return;
+    
+    const timer = setTimeout(onComplete, 1200);
+    return () => clearTimeout(timer);
+  }, [isTransitioning, onComplete]);
+
+  if (!isTransitioning) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+      className="fixed inset-0 z-[100] pointer-events-none overflow-hidden"
+    >
+      {/* Sky gradient */}
+      <motion.div
+        className="absolute inset-0"
+        initial={{ 
+          background: direction === 'sunrise' 
+            ? 'linear-gradient(to top, #0a0a0a 0%, #1a1a2e 100%)'
+            : 'linear-gradient(to top, #f5f5f5 0%, #ffffff 100%)'
+        }}
+        animate={{ 
+          background: direction === 'sunrise'
+            ? [
+                'linear-gradient(to top, #0a0a0a 0%, #1a1a2e 100%)',
+                'linear-gradient(to top, #c9a227 0%, #2d1b4e 50%, #1a1a2e 100%)',
+                'linear-gradient(to top, #fef3c7 0%, #c9a227 30%, #87ceeb 100%)',
+                'linear-gradient(to top, #ffffff 0%, #f5f5f5 100%)',
+              ]
+            : [
+                'linear-gradient(to top, #f5f5f5 0%, #ffffff 100%)',
+                'linear-gradient(to top, #c9a227 0%, #ff8c42 30%, #4a3f6b 100%)',
+                'linear-gradient(to top, #1a1a2e 0%, #2d1b4e 50%, #c9a227 100%)',
+                'linear-gradient(to top, #0a0a0a 0%, #1a1a2e 100%)',
+              ]
+        }}
+        transition={{ duration: 1.2, ease: "easeInOut" }}
+      />
+
+      {/* Minimal horizon glow */}
+      <motion.div
+        className="absolute left-0 right-0 h-32"
+        style={{ bottom: '30%' }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: [0, 0.8, 0.6, 0] }}
+        transition={{ duration: 1.2, ease: "easeInOut" }}
+      >
+        <div 
+          className="w-full h-full"
+          style={{
+            background: `radial-gradient(ellipse 80% 100% at 50% 100%, ${
+              direction === 'sunrise' ? 'rgba(201,162,39,0.4)' : 'rgba(255,140,66,0.4)'
+            } 0%, transparent 70%)`,
+          }}
+        />
+      </motion.div>
+
+      {/* Simple celestial body */}
+      <motion.div
+        className="absolute left-1/2 -translate-x-1/2 w-12 h-12 rounded-full"
+        style={{
+          background: direction === 'sunrise'
+            ? 'radial-gradient(circle, #ffd700 0%, #c9a227 100%)'
+            : 'radial-gradient(circle, #c9a227 0%, #996515 100%)',
+          boxShadow: `0 0 40px ${direction === 'sunrise' ? 'rgba(255,215,0,0.5)' : 'rgba(201,162,39,0.4)'}`,
+        }}
+        initial={{ 
+          top: direction === 'sunrise' ? '80%' : '30%',
+          opacity: 0,
+          scale: 0.5,
+        }}
+        animate={{ 
+          top: direction === 'sunrise' ? '30%' : '80%',
+          opacity: [0, 1, 1, 0],
+          scale: [0.5, 1, 1, 0.5],
+        }}
+        transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+      />
+    </motion.div>
+  );
+}
+
 export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [view, setView] = useState("now");
   const [mounted, setMounted] = useState(false);
   const { theme, setTheme } = useTheme();
   const { enabled: soundEnabled, toggle: toggleSound, play } = useSound();
+  
+  // Theme transition state
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [transitionDirection, setTransitionDirection] = useState<'sunrise' | 'sunset'>('sunrise');
+  const [pendingTheme, setPendingTheme] = useState<'dark' | 'light' | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -3055,6 +3154,25 @@ export default function Home() {
     }
   }, [theme]);
 
+  // Handle theme change with transition
+  const handleThemeChange = useCallback(() => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    const direction = newTheme === 'light' ? 'sunrise' : 'sunset';
+    
+    setPendingTheme(newTheme);
+    setTransitionDirection(direction);
+    setIsTransitioning(true);
+    play('ambient');
+  }, [theme, play]);
+
+  const handleTransitionComplete = useCallback(() => {
+    if (pendingTheme) {
+      setTheme(pendingTheme);
+      setPendingTheme(null);
+    }
+    setIsTransitioning(false);
+  }, [pendingTheme, setTheme]);
+
   const pageTransition = {
     initial: { opacity: 0, y: 20, filter: "blur(10px)" },
     animate: { opacity: 1, y: 0, filter: "blur(0px)" },
@@ -3065,6 +3183,17 @@ export default function Home() {
     <>
       <AnimatePresence>
         {isLoading && <LoadingScreen onComplete={() => setIsLoading(false)} />}
+      </AnimatePresence>
+
+      {/* Theme Transition Overlay */}
+      <AnimatePresence>
+        {isTransitioning && (
+          <ThemeTransition
+            isTransitioning={isTransitioning}
+            direction={transitionDirection}
+            onComplete={handleTransitionComplete}
+          />
+        )}
       </AnimatePresence>
 
       <main 
@@ -3107,18 +3236,29 @@ export default function Home() {
           >
             {soundEnabled ? '🔊' : '🔇'}
           </button>
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-xs transition-colors"
+          <motion.button
+            onClick={handleThemeChange}
+            disabled={isTransitioning}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-xs transition-colors disabled:opacity-50"
             style={{ 
               backgroundColor: 'var(--bg-elevated)',
               color: 'var(--text-muted)',
               border: '1px solid var(--border-primary)'
             }}
             title="Toggle theme"
+            whileHover={{ scale: 1.1, rotate: theme === 'dark' ? 15 : -15 }}
+            whileTap={{ scale: 0.9 }}
           >
-            {theme === 'dark' ? '☀️' : '🌙'}
-          </button>
+            <motion.span
+              key={theme}
+              initial={{ rotate: -180, opacity: 0 }}
+              animate={{ rotate: 0, opacity: 1 }}
+              exit={{ rotate: 180, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              {theme === 'dark' ? '☀️' : '🌙'}
+            </motion.span>
+          </motion.button>
         </motion.div>
 
         {/* Views */}
