@@ -36,6 +36,7 @@ export default function AdminDashboard() {
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -95,6 +96,26 @@ export default function AdminDashboard() {
       console.error("Failed to load dashboard data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSeedDatabase = async () => {
+    if (!confirm("Seed database with initial content? This will add sample data.")) return;
+    
+    setSeeding(true);
+    try {
+      const res = await fetch("/api/seed", { method: "POST" });
+      if (res.ok) {
+        alert("Database seeded successfully!");
+        loadDashboardData();
+      } else {
+        alert("Failed to seed database");
+      }
+    } catch (error) {
+      console.error("Seed error:", error);
+      alert("Error seeding database");
+    } finally {
+      setSeeding(false);
     }
   };
 
@@ -173,6 +194,10 @@ export default function AdminDashboard() {
     { label: "Add Intention", href: "/admin/intentions", icon: "+" },
     { label: "Add Contemplation", href: "/admin/contemplations", icon: "+" },
     { label: "Edit Profile", href: "/admin/profile", icon: "→" },
+  ];
+
+  const systemActions = [
+    { label: "Seed Database", onClick: handleSeedDatabase, icon: "⚡", disabled: seeding },
   ];
 
   const recentArticles = dashboardStats.recentArticles;
@@ -322,6 +347,54 @@ export default function AdminDashboard() {
                   </span>
                 </motion.div>
               </Link>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* System Actions */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45 }}
+          className="p-6 rounded-xl"
+          style={{ 
+            backgroundColor: "var(--bg-elevated)",
+            border: "1px solid var(--border-primary)"
+          }}
+        >
+          <h2 
+            className="text-lg font-light mb-4"
+            style={{ color: "var(--text-primary)" }}
+          >
+            System
+          </h2>
+          <div className="flex gap-3">
+            {systemActions.map((action) => (
+              <motion.button
+                key={action.label}
+                onClick={action.onClick}
+                disabled={action.disabled}
+                whileHover={{ scale: action.disabled ? 1 : 1.02 }}
+                whileTap={{ scale: action.disabled ? 1 : 0.98 }}
+                className="flex-1 p-4 rounded-lg text-center cursor-pointer transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: "var(--bg-primary)",
+                  border: "1px solid var(--border-secondary)"
+                }}
+              >
+                <span 
+                  className="text-lg block mb-1"
+                  style={{ color: "var(--accent-gold)" }}
+                >
+                  {action.icon}
+                </span>
+                <span 
+                  className="text-sm"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  {action.disabled ? "Seeding..." : action.label}
+                </span>
+              </motion.button>
             ))}
           </div>
         </motion.div>
