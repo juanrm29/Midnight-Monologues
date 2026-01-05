@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence, useScroll, useTransform, useSpring } from "framer-motion";
+import Link from "next/link";
 import Nav from "@/components/Nav";
 import LoadingScreen from "@/components/LoadingScreen";
 
@@ -1696,62 +1697,21 @@ function ContemplatedModal({
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// WRITING VIEW - Articles & Thoughts
+// WRITING VIEW - Articles & Thoughts (now fetches from API)
 // ═══════════════════════════════════════════════════════════════════
 
-const ARTICLES = [
-  {
-    id: 1,
-    title: "The Dichotomy of Control",
-    excerpt: "On distinguishing what is within our power and what is not—and why this matters for peace of mind.",
-    date: "2025-12-15",
-    readTime: "8 min",
-    tags: ["stoicism", "philosophy"],
-    featured: true,
-  },
-  {
-    id: 2,
-    title: "Memento Mori: Remember You Must Die",
-    excerpt: "How contemplating mortality clarifies what truly matters and liberates us from trivial concerns.",
-    date: "2025-11-28",
-    readTime: "6 min",
-    tags: ["stoicism", "death"],
-  },
-  {
-    id: 3,
-    title: "Amor Fati: Love Your Fate",
-    excerpt: "The Stoic practice of embracing whatever happens as necessary and even desirable.",
-    date: "2025-11-10",
-    readTime: "7 min",
-    tags: ["stoicism", "acceptance"],
-  },
-  {
-    id: 4,
-    title: "The Obstacle Is The Way",
-    excerpt: "How impediments to action advance action. What stands in the way becomes the way.",
-    date: "2025-10-22",
-    readTime: "9 min",
-    tags: ["stoicism", "resilience"],
-  },
-  {
-    id: 5,
-    title: "Premeditatio Malorum",
-    excerpt: "The practice of negative visualization—imagining loss to appreciate what we have.",
-    date: "2025-09-14",
-    readTime: "5 min",
-    tags: ["stoicism", "gratitude"],
-  },
-  {
-    id: 6,
-    title: "On Living According to Nature",
-    excerpt: "What does it mean to live in accordance with nature? Marcus Aurelius on virtue and reason.",
-    date: "2025-08-30",
-    readTime: "10 min",
-    tags: ["stoicism", "virtue"],
-  },
-];
+interface Article {
+  id: number;
+  slug: string;
+  title: string;
+  excerpt: string;
+  date: string;
+  readTime: string;
+  tags: string[];
+  featured?: boolean;
+}
 
-const STOIC_QUOTES = [
+const STOIC_QUOTES_FALLBACK = [
   { text: "You have power over your mind - not outside events.", author: "Marcus Aurelius", source: "Meditations VI.32" },
   { text: "The impediment to action advances action. What stands in the way becomes the way.", author: "Marcus Aurelius", source: "Meditations V.20" },
   { text: "Waste no more time arguing what a good man should be. Be one.", author: "Marcus Aurelius", source: "Meditations X.16" },
@@ -1759,13 +1719,45 @@ const STOIC_QUOTES = [
 ];
 
 function WritingView() {
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [quotes, setQuotes] = useState(STOIC_QUOTES_FALLBACK);
+  const [loading, setLoading] = useState(true);
   const [typewriterText, setTypewriterText] = useState("");
-  const [currentQuoteIndex] = useState(Math.floor(Math.random() * STOIC_QUOTES.length));
-  
-  const currentQuote = STOIC_QUOTES[currentQuoteIndex];
-  const fullText = currentQuote.text;
+  const [currentQuoteIndex] = useState(0);
 
   useEffect(() => {
+    async function fetchData() {
+      try {
+        const [articlesRes, quotesRes] = await Promise.all([
+          fetch("/api/articles"),
+          fetch("/api/quotes"),
+        ]);
+        
+        if (articlesRes.ok) {
+          const data = await articlesRes.json();
+          setArticles(data);
+        }
+        
+        if (quotesRes.ok) {
+          const quotesData = await quotesRes.json();
+          if (quotesData.length > 0) {
+            setQuotes(quotesData);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch data:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+  
+  const currentQuote = quotes[currentQuoteIndex];
+  const fullText = currentQuote?.text || "";
+
+  useEffect(() => {
+    if (!fullText) return;
     let i = 0;
     const timer = setInterval(() => {
       if (i <= fullText.length) {
@@ -1779,8 +1771,23 @@ function WritingView() {
     return () => clearInterval(timer);
   }, [fullText]);
 
-  const featured = ARTICLES.find(a => a.featured);
-  const others = ARTICLES.filter(a => !a.featured);
+  const featured = articles.find(a => a.featured);
+  const others = articles.filter(a => !a.featured);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="text-2xl"
+          style={{ color: "var(--accent-gold)" }}
+        >
+          ◐
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen px-4 sm:px-6 py-24 sm:py-32">
@@ -1804,7 +1811,7 @@ function WritingView() {
               />
             </p>
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              — {currentQuote.author}, <span className="italic">{currentQuote.source}</span>
+              — {currentQuote?.author}, <span className="italic">{currentQuote?.source}</span>
             </p>
           </div>
         </motion.div>
@@ -1818,12 +1825,12 @@ function WritingView() {
           style={{ borderBottom: '1px solid var(--border-secondary)' }}
         >
           <div>
-            <p className="text-3xl font-light" style={{ color: 'var(--text-primary)' }}>{ARTICLES.length}</p>
+            <p className="text-3xl font-light" style={{ color: 'var(--text-primary)' }}>{articles.length}</p>
             <p className="text-xs tracking-wider uppercase" style={{ color: 'var(--text-muted)' }}>essays</p>
           </div>
           <div>
             <p className="text-3xl font-light" style={{ color: 'var(--text-primary)' }}>
-              {ARTICLES.reduce((acc, a) => acc + parseInt(a.readTime), 0)}
+              {articles.reduce((acc, a) => acc + parseInt(a.readTime), 0)}
             </p>
             <p className="text-xs tracking-wider uppercase" style={{ color: 'var(--text-muted)' }}>min read</p>
           </div>
@@ -1839,44 +1846,46 @@ function WritingView() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="mb-16 sm:mb-24 group cursor-pointer"
+            className="mb-16 sm:mb-24 group"
           >
-            <div 
-              className="p-8 sm:p-12 rounded-xl transition-all duration-300"
-              style={{ 
-                backgroundColor: 'var(--bg-elevated)',
-                border: '1px solid var(--border-primary)',
-              }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-xs tracking-widest uppercase" style={{ color: 'var(--accent-gold)' }}>
-                  featured
-                </span>
-                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-secondary)' }} />
-              </div>
-              
-              <h2 className="text-3xl sm:text-4xl font-light mb-4 group-hover:opacity-70 transition-opacity" style={{ color: 'var(--text-primary)' }}>
-                {featured.title}
-              </h2>
-              
-              <p className="text-lg leading-relaxed mb-6" style={{ color: 'var(--text-secondary)' }}>
-                {featured.excerpt}
-              </p>
-              
-              <div className="flex flex-wrap items-center gap-4 text-sm" style={{ color: 'var(--text-muted)' }}>
-                <span>{featured.date}</span>
-                <span>•</span>
-                <span>{featured.readTime} read</span>
-                <span>•</span>
-                <div className="flex gap-2">
-                  {featured.tags.map(tag => (
-                    <span key={tag} className="px-2 py-1 rounded text-xs" style={{ backgroundColor: 'var(--bg-primary)' }}>
-                      {tag}
-                    </span>
-                  ))}
+            <Link href={`/writing/${featured.slug}`}>
+              <div 
+                className="p-8 sm:p-12 rounded-xl transition-all duration-300 cursor-pointer hover:scale-[1.01]"
+                style={{ 
+                  backgroundColor: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                }}
+              >
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-xs tracking-widest uppercase" style={{ color: 'var(--accent-gold)' }}>
+                    featured
+                  </span>
+                  <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-secondary)' }} />
+                </div>
+                
+                <h2 className="text-3xl sm:text-4xl font-light mb-4 group-hover:opacity-70 transition-opacity" style={{ color: 'var(--text-primary)' }}>
+                  {featured.title}
+                </h2>
+                
+                <p className="text-lg leading-relaxed mb-6" style={{ color: 'var(--text-secondary)' }}>
+                  {featured.excerpt}
+                </p>
+                
+                <div className="flex flex-wrap items-center gap-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+                  <span>{featured.date}</span>
+                  <span>•</span>
+                  <span>{featured.readTime} read</span>
+                  <span>•</span>
+                  <div className="flex gap-2">
+                    {featured.tags.map(tag => (
+                      <span key={tag} className="px-2 py-1 rounded text-xs" style={{ backgroundColor: 'var(--bg-primary)' }}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            </Link>
           </motion.article>
         )}
 
@@ -1888,29 +1897,31 @@ function WritingView() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6 + index * 0.1 }}
-              className="group cursor-pointer"
+              className="group"
             >
-              <div 
-                className="p-6 rounded-lg h-full transition-all duration-300 hover:scale-[1.02]"
-                style={{ 
-                  backgroundColor: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-primary)',
-                }}
-              >
-                <h3 className="text-xl font-light mb-3 group-hover:opacity-70 transition-opacity" style={{ color: 'var(--text-primary)' }}>
-                  {article.title}
-                </h3>
-                
-                <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--text-tertiary)' }}>
-                  {article.excerpt}
-                </p>
-                
-                <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-                  <span>{article.date}</span>
-                  <span>•</span>
-                  <span>{article.readTime}</span>
+              <Link href={`/writing/${article.slug}`}>
+                <div 
+                  className="p-6 rounded-lg h-full transition-all duration-300 hover:scale-[1.02] cursor-pointer"
+                  style={{ 
+                    backgroundColor: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-primary)',
+                  }}
+                >
+                  <h3 className="text-xl font-light mb-3 group-hover:opacity-70 transition-opacity" style={{ color: 'var(--text-primary)' }}>
+                    {article.title}
+                  </h3>
+                  
+                  <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--text-tertiary)' }}>
+                    {article.excerpt}
+                  </p>
+                  
+                  <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+                    <span>{article.date}</span>
+                    <span>•</span>
+                    <span>{article.readTime}</span>
+                  </div>
                 </div>
-              </div>
+              </Link>
             </motion.article>
           ))}
         </div>
@@ -1920,48 +1931,42 @@ function WritingView() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// WORK VIEW - Projects & Contributions
+// WORK VIEW - Projects & Contributions (now fetches from API)
 // ═══════════════════════════════════════════════════════════════════
 
-const PROJECTS = [
-  {
-    id: 1,
-    title: "Stoic Daily",
-    description: "A minimalist daily reflection app inspired by Stoic philosophy. Track your progress on the path to virtue.",
-    tech: ["Next.js", "TypeScript", "Framer Motion"],
-    year: "2025",
-    status: "Active",
-    featured: true,
-  },
-  {
-    id: 2,
-    title: "Memento Mori Timer",
-    description: "A gentle reminder of mortality. Visualize your life in weeks and make each one count.",
-    tech: ["React", "D3.js", "Tailwind"],
-    year: "2025",
-    status: "Active",
-  },
-  {
-    id: 3,
-    title: "Philosophy Archive",
-    description: "Curated collection of philosophical texts with modern commentary and discussion.",
-    tech: ["Next.js", "MDX", "PostgreSQL"],
-    year: "2024",
-    status: "Maintained",
-  },
-  {
-    id: 4,
-    title: "Dichotomy Tool",
-    description: "Interactive tool to practice the Stoic dichotomy of control in daily situations.",
-    tech: ["Vue.js", "TypeScript"],
-    year: "2024",
-    status: "Archived",
-  },
-];
+interface Project {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  tech: string[];
+  year: string;
+  status: string;
+  featured?: boolean;
+}
 
 function WorkView() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
   const [typewriterText, setTypewriterText] = useState("");
   const fullText = "What stands in the way becomes the way.";
+
+  useEffect(() => {
+    async function fetchProjects() {
+      try {
+        const res = await fetch("/api/projects");
+        if (res.ok) {
+          const data = await res.json();
+          setProjects(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch projects:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchProjects();
+  }, []);
 
   useEffect(() => {
     let i = 0;
@@ -2004,8 +2009,23 @@ function WorkView() {
     return colors[level] || colors[0];
   };
 
-  const featured = PROJECTS.find(p => p.featured);
-  const others = PROJECTS.filter(p => !p.featured);
+  const featured = projects.find(p => p.featured);
+  const others = projects.filter(p => !p.featured);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="text-2xl"
+          style={{ color: "var(--accent-gold)" }}
+        >
+          ◐
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen px-4 sm:px-6 py-24 sm:py-32">
@@ -2043,12 +2063,12 @@ function WorkView() {
           style={{ borderBottom: '1px solid var(--border-secondary)' }}
         >
           <div>
-            <p className="text-3xl font-light" style={{ color: 'var(--text-primary)' }}>{PROJECTS.length}</p>
+            <p className="text-3xl font-light" style={{ color: 'var(--text-primary)' }}>{projects.length}</p>
             <p className="text-xs tracking-wider uppercase" style={{ color: 'var(--text-muted)' }}>projects</p>
           </div>
           <div>
             <p className="text-3xl font-light" style={{ color: 'var(--text-primary)' }}>
-              {PROJECTS.filter(p => p.status === 'Active').length}
+              {projects.filter(p => p.status === 'Active').length}
             </p>
             <p className="text-xs tracking-wider uppercase" style={{ color: 'var(--text-muted)' }}>active</p>
           </div>
@@ -2064,46 +2084,48 @@ function WorkView() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="mb-16 sm:mb-24 group cursor-pointer"
+            className="mb-16 sm:mb-24 group"
           >
-            <div 
-              className="p-8 sm:p-12 rounded-xl transition-all duration-300"
-              style={{ 
-                backgroundColor: 'var(--bg-elevated)',
-                border: '1px solid var(--border-primary)',
-              }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-xs tracking-widest uppercase" style={{ color: 'var(--accent-gold)' }}>
-                  featured
-                </span>
-                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-secondary)' }} />
-              </div>
-              
-              <h2 className="text-3xl sm:text-4xl font-light mb-4 group-hover:opacity-70 transition-opacity" style={{ color: 'var(--text-primary)' }}>
-                {featured.title}
-              </h2>
-              
-              <p className="text-lg leading-relaxed mb-6" style={{ color: 'var(--text-secondary)' }}>
-                {featured.description}
-              </p>
-              
-              <div className="flex flex-wrap items-center gap-4 text-sm" style={{ color: 'var(--text-muted)' }}>
-                <span>{featured.year}</span>
-                <span>•</span>
-                <span className="px-2 py-1 rounded text-xs" style={{ backgroundColor: 'var(--accent-gold-dim)', color: 'var(--accent-gold)' }}>
-                  {featured.status}
-                </span>
-                <span>•</span>
-                <div className="flex gap-2">
-                  {featured.tech.map(tech => (
-                    <span key={tech} className="px-2 py-1 rounded text-xs" style={{ backgroundColor: 'var(--bg-primary)' }}>
-                      {tech}
-                    </span>
-                  ))}
+            <Link href={`/work/${featured.slug}`}>
+              <div 
+                className="p-8 sm:p-12 rounded-xl transition-all duration-300 hover:scale-[1.01] cursor-pointer"
+                style={{ 
+                  backgroundColor: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                }}
+              >
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-xs tracking-widest uppercase" style={{ color: 'var(--accent-gold)' }}>
+                    featured
+                  </span>
+                  <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-secondary)' }} />
+                </div>
+                
+                <h2 className="text-3xl sm:text-4xl font-light mb-4 group-hover:opacity-70 transition-opacity" style={{ color: 'var(--text-primary)' }}>
+                  {featured.title}
+                </h2>
+                
+                <p className="text-lg leading-relaxed mb-6" style={{ color: 'var(--text-secondary)' }}>
+                  {featured.description}
+                </p>
+                
+                <div className="flex flex-wrap items-center gap-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+                  <span>{featured.year}</span>
+                  <span>•</span>
+                  <span className="px-2 py-1 rounded text-xs" style={{ backgroundColor: 'var(--accent-gold-dim)', color: 'var(--accent-gold)' }}>
+                    {featured.status}
+                  </span>
+                  <span>•</span>
+                  <div className="flex gap-2">
+                    {featured.tech.map(tech => (
+                      <span key={tech} className="px-2 py-1 rounded text-xs" style={{ backgroundColor: 'var(--bg-primary)' }}>
+                        {tech}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            </Link>
           </motion.article>
         )}
 
@@ -2115,38 +2137,40 @@ function WorkView() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6 + index * 0.1 }}
-              className="group cursor-pointer"
+              className="group"
             >
-              <div 
-                className="p-6 rounded-lg h-full transition-all duration-300 hover:scale-[1.02]"
-                style={{ 
-                  backgroundColor: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-primary)',
-                }}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="text-xl font-light group-hover:opacity-70 transition-opacity" style={{ color: 'var(--text-primary)' }}>
-                    {project.title}
-                  </h3>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{project.year}</span>
+              <Link href={`/work/${project.slug}`}>
+                <div 
+                  className="p-6 rounded-lg h-full transition-all duration-300 hover:scale-[1.02] cursor-pointer"
+                  style={{ 
+                    backgroundColor: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-primary)',
+                  }}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-xl font-light group-hover:opacity-70 transition-opacity" style={{ color: 'var(--text-primary)' }}>
+                      {project.title}
+                    </h3>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{project.year}</span>
+                  </div>
+                  
+                  <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--text-tertiary)' }}>
+                    {project.description}
+                  </p>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {project.tech.map(tech => (
+                      <span 
+                        key={tech} 
+                        className="px-2 py-1 rounded text-xs"
+                        style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-muted)' }}
+                      >
+                        {tech}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                
-                <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--text-tertiary)' }}>
-                  {project.description}
-                </p>
-                
-                <div className="flex flex-wrap gap-2">
-                  {project.tech.map(tech => (
-                    <span 
-                      key={tech} 
-                      className="px-2 py-1 rounded text-xs"
-                      style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-muted)' }}
-                    >
-                      {tech}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              </Link>
             </motion.article>
           ))}
         </div>

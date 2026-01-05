@@ -1,0 +1,80 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CONTENT MODELS - Stoic Personal Blog
+// ═══════════════════════════════════════════════════════════════════
+
+model Article {
+  id        Int      @id @default(autoincrement())
+  slug      String   @unique
+  title     String
+  excerpt   String
+  date      String
+  readTime  String
+  tags      String   // JSON array stored as string
+  featured  Boolean  @default(false)
+  epigraph  String?  // JSON object stored as string
+  content   String   // JSON array stored as string
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Project {
+  id          Int      @id @default(autoincrement())
+  slug        String   @unique
+  title       String
+  description String
+  tech        String   // JSON array stored as string
+  year        String
+  status      String   @default("Active")
+  featured    Boolean  @default(false)
+  role        String?
+  tagline     String?  // Short tagline for the project
+  links       String?  // JSON object stored as string
+  philosophy  String?  // JSON object stored as string
+  sections    String?  // JSON array stored as string
+  gallery     String?  // JSON array stored as string
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Profile {
+  id       Int     @id @default(autoincrement())
+  name     String
+  title    String
+  bio      String
+  avatar   String?
+  location String?
+  email    String?
+  social   String? // JSON object stored as string
+}
+
+model Quote {
+  id       Int     @id @default(autoincrement())
+  text     String
+  author   String
+  source   String
+  category String?
+}
+
+model StickyNote {
+  id        Int      @id @default(autoincrement())
+  question  String
+  answer    String
+  author    String
+  color     String   @default("gold")
+  positionX Int      @default(20)
+  positionY Int      @default(20)
+  rotation  Int      @default(0)
+  createdAt DateTime @default(now())
+}
